@@ -13,10 +13,13 @@ class FunctionDependencyAnalyzer(ast.NodeVisitor):
 
         self.function_calls: FunctionCalls = defaultdict(set)
 
+    def __call__(self, tree: ast.AST) -> SimplifiedFunctionCalls:
+        return self.analyze(tree)
+
     def _clear(self) -> None:
         self.function_calls.clear()
 
-    def visit_Call(self, node: ast.Call) -> None:  # pylint: disable=invalid-name
+    def visit_Call(self, node: ast.Call) -> None:
         wrapper = self.wrappers[node]
         if wrapper.parent and wrapper.functions:
             last_function = wrapper.functions[-1]

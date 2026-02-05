@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 authors = [{ name = "Jakim" }]
 
-dependencies = ["anytree==2.13.0"]
+dependencies = ["anytree==2.13.0", "pydantic>=2.0.0"]
 
 [project.optional-dependencies]
 dev = [

@@ -1,11 +1,16 @@
-from fda.analyzer.analyzer import FunctionDependencyAnalyzer
-from fda.node.wrapper import ASTNodeWrapper
-from fda.parser.parser import parse_python_file
-from fda.resolver.resolver import NameResolver
+from fda.analyzer import FunctionDependencyAnalyzer
+from fda.importer import ImportConfig, ImportResolver, ModuleAnalyzer, ModuleRegistry
+from fda.node import ASTNodeWrapper
+from fda.parser import parse_python_file
+from fda.resolver import NameResolver
 
 __all__ = [
     "FunctionDependencyAnalyzer",
     "ASTNodeWrapper",
     "parse_python_file",
     "NameResolver",
+    "ImportResolver",
+    "ImportConfig",
+    "ModuleRegistry",
+    "ModuleAnalyzer",
 ]

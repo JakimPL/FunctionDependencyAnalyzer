@@ -3,7 +3,7 @@ from __future__ import annotations
 import ast
 from collections import deque
 from pathlib import Path
-from typing import Any, Deque, Dict, List, Optional
+from typing import Any, Deque, Dict, List, Optional, Tuple
 
 from fda.node import ASTNodeWrapper, CallResolutions, NodeWrapperMap
 from fda.resolver.scope import Scope
@@ -95,7 +95,7 @@ class NameResolver(ast.NodeVisitor):
             if resolved:
                 self.call_resolutions[callee] = resolved
 
-    def resolve(self, tree: ast.AST) -> tuple[NodeWrapperMap, CallResolutions]:
+    def resolve(self, tree: ast.AST) -> Tuple[NodeWrapperMap, CallResolutions]:
         self._clear()
         self._analyze_tree(tree)
         self._collect_definitions(tree)
