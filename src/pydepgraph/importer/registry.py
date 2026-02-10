@@ -2,14 +2,14 @@ from __future__ import annotations
 
 import ast
 from pathlib import Path
-from typing import Dict, List, Optional, Set
+from typing import Dict, List, Optional, Set, Union
 
 import networkx as nx
 from anytree import PreOrderIter
 
+from pydepgraph.config import ImporterConfig
 from pydepgraph.exceptions import PDGImportError
-from pydepgraph.importer.config import ImportConfig
-from pydepgraph.importer.graph import ImportGraphEnum
+from pydepgraph.importer.graph import ImportGraph
 from pydepgraph.node import AST
 from pydepgraph.specification import (
     ImportPath,
@@ -27,25 +27,26 @@ from pydepgraph.types import Pathlike
 class ModuleRegistry:
     def __init__(
         self,
-        import_config: ImportConfig,
+        config: ImporterConfig,
         project_root: Pathlike,
         package: str,
     ) -> None:
-        self.import_config = import_config
+        self.config = config
         self.project_root = Path(project_root).resolve()
         self.package = package
         self.modules: Dict[str, Module] = {}
-        self.graph: Optional[nx.DiGraph] = None
+        self.graph: ImportGraph = ImportGraph()
         self.filepath: Optional[Path] = None
 
-    def __call__(self, filepath: Path) -> nx.DiGraph:
-        if self.graph is None or self.filepath != filepath:
+    def __call__(self, filepath: Path) -> Union[nx.DiGraph[str], nx.DiGraph[Module]]:
+        if len(self.graph) == 0 or self.filepath != filepath:
             self._create_graph(filepath)
 
-        return self._create_output_graph()
+        assert self.graph is not None, "Graph should have been created at this point"
+        return self.graph(self.config.node_format)
 
     def _create_graph(self, filepath: Path) -> None:
-        self.graph = nx.DiGraph()
+        self.graph = ImportGraph()
         self.filepath = filepath
 
         root = self._create_root(filepath)
@@ -65,48 +66,6 @@ class ModuleRegistry:
                 new_modules,
                 processed,
             )
-
-    def _create_output_graph(self) -> nx.DiGraph:
-        if self.graph is None:
-            raise ValueError("Graph has not been created yet")
-
-        output_type = self.import_config.output
-        match output_type:
-            case ImportGraphEnum.FULL:
-                return nx.DiGraph(self.graph)
-            case ImportGraphEnum.NAMES:
-                return nx.relabel_nodes(
-                    self.graph,
-                    lambda module: module.name,
-                    copy=True,
-                )
-            case ImportGraphEnum.TOP_LEVEL:
-                return self._create_top_level_graph()
-
-        raise ValueError(f"Unsupported output type: {output_type}")
-
-    def _create_top_level_graph(self) -> nx.DiGraph:
-        """
-        Create a graph where nodes are identified by their top-level module name.
-        Collapses all submodules into their parent top-level module.
-        """
-        if self.graph is None:
-            raise ValueError("Graph has not been created yet")
-
-        def partition(module1: Module, module2: Module) -> bool:
-            return module1.top_level_module == module2.top_level_module
-
-        quotient = nx.quotient_graph(
-            self.graph,
-            partition,
-            create_using=nx.DiGraph,
-        )
-
-        return nx.relabel_nodes(
-            quotient,
-            lambda node: next(iter(node)).top_level_module,
-            copy=False,
-        )
 
     def analyze_file(
         self,
@@ -153,10 +112,10 @@ class ModuleRegistry:
             return False
 
         category = module.get_category(self.project_root)
-        if not self.import_config.scan_stdlib and category == ModuleCategory.STDLIB:
+        if not self.config.scan_stdlib and category == ModuleCategory.STDLIB:
             return False
 
-        if not self.import_config.scan_external and category == ModuleCategory.EXTERNAL:
+        if not self.config.scan_external and category == ModuleCategory.EXTERNAL:
             return False
 
         assert module.origin is not None
@@ -257,29 +216,12 @@ class ModuleRegistry:
         processed.add(module.origin)
         imported_modules = self.analyze_module(module)
         for imported_module_name, imported_module in imported_modules.items():
-            self._add_node(module)
             if imported_module_name not in self.modules:
                 self.modules[imported_module_name] = imported_module
 
             target_module = self.modules[imported_module_name]
-            self._add_edge(module, target_module)
+            self.graph.add_edge(module, target_module)
             new_modules.add(target_module)
-
-    def _add_node(self, module: Module) -> None:
-        if self.graph is None:
-            raise ValueError("Graph has not been created yet")
-
-        if not self.graph.has_node(module):
-            self.graph.add_node(module)
-
-    def _add_edge(self, from_module: Module, to_module: Module) -> None:
-        if self.graph is None:
-            raise ValueError("Graph has not been created yet")
-
-        if from_module != to_module and not self.graph.has_edge(from_module, to_module):
-            self._add_node(from_module)
-            self._add_node(to_module)
-            self.graph.add_edge(from_module, to_module)
 
     def _resolve(
         self,

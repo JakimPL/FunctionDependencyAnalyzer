@@ -4,10 +4,10 @@ from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from pydepgraph.importer.graph import ImportGraphEnum
+from pydepgraph.config.importer.output import ImportGraphNodeFormatEnum
 
 
-class ImportConfig(BaseModel):
+class ImporterConfig(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True, use_enum_values=True)
 
     scan_stdlib: bool = Field(default=False, description="Include standard library modules")
@@ -16,4 +16,7 @@ class ImportConfig(BaseModel):
     resolve_wildcards: bool = Field(default=True, description="Expand wildcard imports")
     max_depth: Optional[int] = Field(default=None, description="Limit recursion depth")
     follow_conditional: bool = Field(default=True, description="Analyze try/except branches")
-    output: ImportGraphEnum = Field(default=ImportGraphEnum.FULL, description="Output format for the import graph")
+    node_format: ImportGraphNodeFormatEnum = Field(
+        default=ImportGraphNodeFormatEnum.NAME,
+        description="Output format for the import graph",
+    )
