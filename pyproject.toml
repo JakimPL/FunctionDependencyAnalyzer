@@ -1,7 +1,7 @@
 [project]
-name = "fda"
+name = "pydepgraph"
 version = "0.0.1"
-description = "Function Dependency Analyzer - Analyze and visualize function dependencies in Python projects."
+description = "Python Dependency Analyzer - Analyze and visualize module/function dependencies in Python projects."
 readme = "README.md"
 requires-python = ">=3.12"
 authors = [{ name = "Jakim" }]
@@ -29,7 +29,7 @@ target-version = ["py312"]
 [tool.isort]
 profile = "black"
 line_length = 120
-known_first_party = ["fda"]
+known_first_party = ["pydepgraph"]
 
 [tool.pytest.ini_options]
 addopts = """
@@ -40,11 +40,11 @@ addopts = """
 show_missing = true
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/fda"]
+packages = ["src/pydepgraph"]
 
 [tool.mypy]
 python_version = "3.12"
-files = "src/fda"
+files = "src/pydepgraph"
 exclude = ["^tests/", "^\\..*"]
 ignore_missing_imports = true
 strict = true
