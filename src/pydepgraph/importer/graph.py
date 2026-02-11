@@ -6,16 +6,13 @@ from pydepgraph.specification import Module
 
 
 class ImportGraph(BaseGraph[Module], graph_type=nx.DiGraph):
-    def __call__(self, output_format: ImportGraphNodeFormatEnum) -> nx.DiGraph[Module]:
+    def __call__(self, output_format: ImportGraphNodeFormatEnum) -> nx.DiGraph:
         return self._create_output_graph(output_format)
-
-    def __len__(self) -> int:
-        return int(self._graph.number_of_nodes())
 
     def _create_output_graph(self, output_format: ImportGraphNodeFormatEnum) -> nx.DiGraph:
         match output_format:
             case ImportGraphNodeFormatEnum.FULL:
-                return nx.DiGraph[Module](self._graph)
+                return nx.DiGraph(self._graph)
             case ImportGraphNodeFormatEnum.NAME:
                 return nx.relabel_nodes(
                     self._graph,
@@ -27,7 +24,7 @@ class ImportGraph(BaseGraph[Module], graph_type=nx.DiGraph):
 
         raise ValueError(f"Unsupported output format: {output_format}")
 
-    def _create_top_level_graph(self) -> nx.DiGraph[str]:
+    def _create_top_level_graph(self) -> nx.DiGraph:
         """
         Create a graph where nodes are identified by their top-level module name.
         Collapses all submodules into their parent top-level module.

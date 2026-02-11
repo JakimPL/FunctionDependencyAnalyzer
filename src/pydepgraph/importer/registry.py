@@ -20,7 +20,7 @@ from pydepgraph.specification import (
     SysPaths,
     is_spec_origin_valid,
 )
-from pydepgraph.tools import logger
+from pydepgraph.tools import OrderedSet, logger
 from pydepgraph.types import Pathlike
 
 
@@ -38,11 +38,11 @@ class ModuleRegistry:
         self.graph: ImportGraph = ImportGraph()
         self.filepath: Optional[Path] = None
 
-    def __call__(self, filepath: Path) -> Union[nx.DiGraph[str], nx.DiGraph[Module]]:
-        if len(self.graph) == 0 or self.filepath != filepath:
+    def __call__(self, filepath: Path) -> Union[nx.DiGraph, nx.DiGraph]:
+        if self.graph.empty or self.filepath != filepath:
             self._create_graph(filepath)
 
-        assert self.graph is not None, "Graph should have been created at this point"
+        self._check_graph()
         return self.graph(self.config.node_format)
 
     def _create_graph(self, filepath: Path) -> None:
@@ -54,7 +54,7 @@ class ModuleRegistry:
 
         processed: Set[Optional[Path]] = {None}
         self.modules = {root.name: root}
-        new_modules: Set[Module] = {root}
+        new_modules: OrderedSet[Module] = OrderedSet([root])
 
         while new_modules:
             module = new_modules.pop()
@@ -65,6 +65,17 @@ class ModuleRegistry:
                 module,
                 new_modules,
                 processed,
+            )
+
+    def _check_graph(self) -> None:
+        if self.graph.empty:
+            logger.warning("The dependency graph is empty.")
+
+        cycle = self.graph.find_cycle()
+        if cycle is not None:
+            logger.warning(
+                "The dependency graph has a cycle. Example cycle:\n : %s",
+                "\n-> ".join(module.name for module in cycle),
             )
 
     def analyze_file(
@@ -131,27 +142,27 @@ class ModuleRegistry:
         tree: AST,
         processed: Optional[Set[Optional[Path]]] = None,
     ) -> List[ImportPath]:
-        module_paths: Dict[ImportPath, None] = {}
+        module_paths: OrderedSet[ImportPath] = OrderedSet()
         import_paths = self._collect_import_paths(tree)
         for import_path in import_paths:
             module_path = self._resolve(module_source, import_path, processed)
             if module_path is not None:
-                module_paths[module_path] = None
+                module_paths.add(module_path)
 
-        return list(module_paths.keys())
+        return list(module_paths)
 
     def _collect_import_paths(
         self,
         tree: AST,
     ) -> List[ImportPath]:
-        import_paths: Dict[ImportPath, None] = {}
+        import_paths: OrderedSet[ImportPath] = OrderedSet()
         for node in PreOrderIter(tree.root):
             if node.type in (ast.Import, ast.ImportFrom):
                 import_node = node.ast
-                new_paths = {import_path.get_module_path() for import_path in ImportPath.from_ast(import_node)}
-                import_paths.update({path: None for path in new_paths})
+                new_paths = [import_path.get_module_path() for import_path in ImportPath.from_ast(import_node)]
+                import_paths.update(new_paths)
 
-        return list(import_paths.keys())
+        return list(import_paths)
 
     def _collect_modules(
         self,
@@ -210,7 +221,7 @@ class ModuleRegistry:
     def _collect_new_modules(
         self,
         module: Module,
-        new_modules: Set[Module],
+        new_modules: OrderedSet[Module],
         processed: Set[Optional[Path]],
     ) -> None:
         processed.add(module.origin)
