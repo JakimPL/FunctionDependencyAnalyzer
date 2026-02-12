@@ -6,6 +6,7 @@ from anytree import PostOrderIter
 from pda.nodes.base import BaseForest
 from pda.nodes.paths.node import PathNode
 from pda.tools.paths import is_dir, iterdir
+from pda.types import Pathlike
 
 
 class PathForest(BaseForest[Path, Path, PathNode]):
@@ -48,8 +49,8 @@ class PathForest(BaseForest[Path, Path, PathNode]):
     ) -> PathNode:
         return PathNode(item, parent=parent)
 
-    def _prepare_input(self, inp: Path) -> Path:
-        return inp.resolve()
+    def _prepare_input(self, inp: Pathlike) -> Path:
+        return Path(inp).resolve()
 
     def _input_to_item(self, inp: Path) -> Path:
         return inp

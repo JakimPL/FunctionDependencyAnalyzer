@@ -153,7 +153,11 @@ def iterdir(path: Pathlike) -> List[Path]:
         A list of Path objects representing the contents of the directory, or an empty list if an
         error occurs.
     """
-    return sorted(Path(path).iterdir())
+    return sorted(
+        path
+        for path in Path(path).iterdir()
+        if not path.name.startswith(".") and path.name != "__pycache__" and not path.is_symlink()
+    )
 
 
 @safe_path(default=default_path_list_factory)

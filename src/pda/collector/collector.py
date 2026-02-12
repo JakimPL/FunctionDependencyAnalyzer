@@ -1,4 +1,5 @@
 import pkgutil
+import sys
 from importlib.machinery import ModuleSpec
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union, overload
@@ -133,30 +134,64 @@ class ModulesCollector(BaseAnalyzer[ModulesCollectorConfig, nx.DiGraph]):
         self.clear()
         self._collect_external_modules()
         self._collect_internal_modules()
+        if not self:
+            logger.warning("No modules collected. Check your configuration and project structure.")
 
     def _collect_external_modules(self) -> None:
         for pkg_module in self._pkg_modules.values():
             name = pkg_module.name
+            if name in sys.stdlib_module_names:
+                if not self.config.scan_stdlib:
+                    continue
+            elif not self.config.scan_external:
+                continue
+
             is_package = pkg_module.ispkg
             package = name if is_package else None
-            self._add_module(name, package=package)
+            base_path = Path(str(pkg_module.module_finder))
+            self._add_module(name, base_path, package=package)
 
     def _collect_internal_modules(self) -> None:
         if not self._project_root:
             return
 
-        files = sorted(self._project_root.glob("**/*.py"))
+        self._add_submodules_from_files(
+            location=str(self._project_root),
+            base_path=self._project_root,
+            package=self._package,
+        )
+
+    def _add_submodules_from_files(
+        self,
+        location: str,
+        base_path: Path,
+        parent: Optional[Module] = None,
+        package: Optional[str] = None,
+    ) -> None:
+        origin = resolve_path(location)
+        if not origin:
+            return
+
+        files = self._get_submodule_paths(origin)
+        import_paths = self._get_import_paths(files, base_path)
+        for import_path in import_paths:
+            self._add_module(
+                str(import_path),
+                base_path,
+                package=package,
+                parent=parent,
+            )
+
+    def _get_import_paths(self, files: List[Path], base_path: Path) -> List[ImportPath]:
+        import_paths: List[ImportPath] = []
         for path in files:
-            import_path = self._get_import_path_from_file(path, self._project_root)
-            if import_path is None:
-                continue
+            import_path = self._get_import_path(path, base_path)
+            if import_path is not None:
+                import_paths.append(import_path)
 
-            self._add_module(str(import_path), package=self._package)
+        return import_paths
 
-    def _get_import_path_from_file(self, path: Path, base_path: Path) -> Optional[ImportPath]:
-        if not is_file(path) or path.suffix.lower() != ".py":
-            return None
-
+    def _get_import_path(self, path: Path, base_path: Path) -> Optional[ImportPath]:
         import_path = ImportPath.from_path(path, base_path)
         if import_path is None:
             logger.warning("Could not determine import path for %s", path)
@@ -166,6 +201,7 @@ class ModulesCollector(BaseAnalyzer[ModulesCollectorConfig, nx.DiGraph]):
     def _add_module(
         self,
         name: str,
+        base_path: Path,
         package: Optional[str] = None,
         parent: Optional[Module] = None,
     ) -> None:
@@ -176,11 +212,12 @@ class ModulesCollector(BaseAnalyzer[ModulesCollectorConfig, nx.DiGraph]):
         _, module, category = module_wrapper
         self._modules[category][name] = module
         self._update_graph(module, parent)
-        self._add_submodules(module_wrapper, package=name)
+        self._add_submodules(module_wrapper, base_path, package=name)
 
     def _add_submodules(
         self,
         wrapper: ModuleWrapper,
+        base_path: Path,
         package: Optional[str] = None,
     ) -> None:
         spec, parent, _ = wrapper
@@ -188,35 +225,12 @@ class ModulesCollector(BaseAnalyzer[ModulesCollectorConfig, nx.DiGraph]):
             return
 
         for location in spec.submodule_search_locations:
-            self._add_submodules_from_files(location, parent, package=package)
-
-    def _add_submodules_from_files(
-        self,
-        location: str,
-        parent: Module,
-        package: Optional[str] = None,
-    ) -> None:
-        origin = resolve_path(location)
-        if not origin:
-            return
-
-        files = self._get_submodule_paths(origin)
-        import_paths = self._get_import_paths_from_files(files, origin)
-        for import_path in import_paths:
-            self._add_submodule_from_file(import_path, parent, package=package)
-
-    def _get_import_paths_from_files(self, files: List[Path], base_path: Path) -> List[ImportPath]:
-        import_paths: List[ImportPath] = []
-        for path in files:
-            import_path = self._get_import_path_from_file(path, base_path)
-            if import_path is not None:
-                import_paths.append(import_path)
-
-        return import_paths
-
-    def _add_submodule_from_file(self, import_path: ImportPath, parent: Module, package: Optional[str] = None) -> None:
-        name = str(import_path)
-        self._add_module(name, package=package, parent=parent)
+            self._add_submodules_from_files(
+                location,
+                base_path=base_path,
+                parent=parent,
+                package=package,
+            )
 
     def _get_module(self, name: str, package: Optional[str] = None) -> Optional[ModuleWrapper]:
         spec = find_module_spec(name, package=package)
@@ -231,13 +245,6 @@ class ModulesCollector(BaseAnalyzer[ModulesCollectorConfig, nx.DiGraph]):
         if spec.origin == OriginType.BUILT_IN:
             logger.debug("Skipping built-in module: %s", name)
             return None
-
-        origin = resolve_path(spec.origin)
-        if not origin:
-            return None
-
-        if origin.suffix.lower() != ".py":
-            logger.debug("Module %s has non-Python origin: %s", name, origin)
 
         module = Module.from_spec(spec, package=package)
         category = module.get_category(self._project_root)

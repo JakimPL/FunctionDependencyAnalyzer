@@ -1,4 +1,5 @@
-from typing import Dict, Generic, Iterable, Iterator, Optional
+from collections.abc import Iterable
+from typing import Dict, Generic, Iterator, Optional
 
 from pda.types import AnyT
 

@@ -1,4 +1,4 @@
-from collections.abc import Iterable
+from collections.abc import Hashable, Iterable
 from pathlib import Path
 from typing import TypeAlias, TypeVar, Union
 
@@ -7,3 +7,4 @@ AnyT_co = TypeVar("AnyT_co", covariant=True)
 
 Pathlike: TypeAlias = Union[str, Path]
 PathInput: TypeAlias = Union[Pathlike, Iterable[Pathlike]]
+HashableT = TypeVar("HashableT", bound=Hashable)

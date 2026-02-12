@@ -1,17 +1,16 @@
 from abc import ABC, abstractmethod
 from collections.abc import Iterable, Iterator
-from typing import Dict, Generic, List, Optional, Set, TypeVar, Union
+from typing import Dict, Generic, List, Optional, Set, Union
 
 from anytree import LevelOrderIter
 
 from pda.nodes.types import AnyNodeT
-from pda.types import AnyT
+from pda.tools.ordered_set import OrderedSet
+from pda.types import AnyT, HashableT
 
-InputT = TypeVar("InputT")
 
-
-class BaseForest(ABC, Generic[InputT, AnyT, AnyNodeT]):
-    def __init__(self, items: Union[InputT, Iterable[InputT]]) -> None:
+class BaseForest(ABC, Generic[HashableT, AnyT, AnyNodeT]):
+    def __init__(self, items: Union[HashableT, Iterable[HashableT]]) -> None:
         self._mapping: Dict[AnyT, AnyNodeT] = {}
         self._items: List[AnyT] = self._prepare_inputs(items)
         self._roots: Set[AnyNodeT] = set()
@@ -34,9 +33,10 @@ class BaseForest(ABC, Generic[InputT, AnyT, AnyNodeT]):
         item = self._prepare_item(item)
         return self._mapping[item]
 
-    def _prepare_inputs(self, inputs: Union[InputT, Iterable[InputT]]) -> List[AnyT]:
+    def _prepare_inputs(self, inputs: Union[HashableT, Iterable[HashableT]]) -> List[AnyT]:
         if isinstance(inputs, Iterable):
-            return list(map(self._prepare_input, inputs))
+            items: OrderedSet[HashableT] = OrderedSet[HashableT](inputs)
+            return list(map(self._prepare_input, items))
 
         return [self._prepare_input(inputs)]
 
@@ -49,9 +49,9 @@ class BaseForest(ABC, Generic[InputT, AnyT, AnyNodeT]):
         return self._mapping.copy()
 
     @abstractmethod
-    def _input_to_item(self, inp: InputT) -> AnyT: ...
+    def _input_to_item(self, inp: HashableT) -> AnyT: ...
 
-    def _prepare_input(self, inp: InputT) -> AnyT:
+    def _prepare_input(self, inp: HashableT) -> AnyT:
         item = self._input_to_item(inp)
         return self._prepare_item(item)
 

@@ -44,7 +44,7 @@ class Module(Specification):
             raise PDAMissingModuleNameError("Package name cannot be empty if provided")
 
         if self.origin is not None:
-            validate_spec(self.spec, validate_origin=True, expect_python=self.origin_type == OriginType.PYTHON)
+            validate_spec(self.spec, validate_origin=False, expect_python=self.origin_type == OriginType.PYTHON)
 
         elif self.origin_type == OriginType.PYTHON:
             raise PDAInvalidOriginTypeError(f"Module '{self.name}' has file origin type but no origin path")
@@ -99,9 +99,6 @@ class Module(Specification):
         """
         Create a Module instance from a ModuleSpec and category.
         """
-        if not spec.origin:
-            raise ValueError(f"Module '{spec.name}' has no origin path")
-
         origin_type = OriginType.from_spec(spec)
         origin = resolve_path(spec.origin)
         submodule_search_locations = cls.retrieve_submodule_search_locations(spec)
@@ -120,7 +117,7 @@ class Module(Specification):
         Convert the Module instance back to a ModuleSpec for compatibility with importlib.
         """
         spec = find_spec(self.name, package=self.package)
-        return validate_spec(spec, expect_python=False)
+        return validate_spec(spec, validate_origin=False, expect_python=False)
 
     def get_category(self, base_path: Optional[Path] = None) -> ModuleCategory:
         """
