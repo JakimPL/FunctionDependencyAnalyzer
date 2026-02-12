@@ -13,6 +13,7 @@ from pda.specification.base import Specification
 from pda.specification.imports.path import ImportPath
 from pda.specification.modules.module import Module
 from pda.specification.modules.spec import validate_spec
+from pda.tools.paths import is_dir
 
 
 class ModuleSource(Specification):
@@ -35,7 +36,7 @@ class ModuleSource(Specification):
     def validate_paths(self) -> Self:
         validate_python_file(self.origin)
 
-        if not self.base_path.is_dir():
+        if not is_dir(self.base_path):
             raise NotADirectoryError(f"Base path '{self.base_path}' is not a valid directory")
 
         if DELIMITER in self.top_level:

@@ -9,6 +9,8 @@ import networkx as nx
 from pda.analyzer import BaseAnalyzer
 from pda.config import ModulesCollectorConfig
 from pda.graph import ImportGraph
+from pda.nodes.paths import PathForest
+from pda.nodes.paths.node import PathNode
 from pda.specification import (
     ImportPath,
     Module,
@@ -17,10 +19,11 @@ from pda.specification import (
     ModulesCollection,
     ModuleWrapper,
     OriginType,
+    SysPaths,
     find_module_spec,
 )
 from pda.tools import logger
-from pda.tools.paths import is_dir, is_file, iterdir, resolve_path
+from pda.tools.paths import filter_subdirectories, resolve_path
 from pda.types import Pathlike
 
 
@@ -36,6 +39,7 @@ class ModulesCollector(BaseAnalyzer[ModulesCollectorConfig, nx.DiGraph]):
         self._modules: ModulesCollection = self._initialize_modules_collection()
         self._pkg_modules: Dict[str, pkgutil.ModuleInfo] = self._collect_pkg_modules()
         self._graph: ImportGraph = ImportGraph()
+        self._path_forest: PathForest = self._initialize_forest()
 
     def __call__(self, refresh: bool = False) -> nx.DiGraph:
         self._collect_modules_if_needed(refresh=refresh)
@@ -121,6 +125,11 @@ class ModulesCollector(BaseAnalyzer[ModulesCollectorConfig, nx.DiGraph]):
 
     def _initialize_modules_collection(self) -> ModulesCollection:
         return {category: {} for category in self.categories}
+
+    def _initialize_forest(self) -> PathForest:
+        paths: List[Path] = SysPaths.get_candidates(base_path=self._project_root)
+        root_paths = filter_subdirectories(paths)
+        return PathForest(root_paths)
 
     def _collect_pkg_modules(self) -> Dict[str, pkgutil.ModuleInfo]:
         return {module.name: module for module in pkgutil.iter_modules()}
@@ -257,5 +266,14 @@ class ModulesCollector(BaseAnalyzer[ModulesCollectorConfig, nx.DiGraph]):
         if origin is None:
             return []
 
-        files: List[Path] = iterdir(origin)
-        return sorted(path for path in files if is_file(path) and path.suffix.lower() == ".py" or is_dir(path))
+        origin_node = self._path_forest.get(origin)
+        if origin_node is None:
+            return []
+
+        child: PathNode
+        paths: List[Path] = []
+        for child in origin_node.children:
+            if (child.is_python_file and not child.is_init) or (child.is_dir and child.is_package):
+                paths.append(child.filepath)
+
+        return sorted(paths)

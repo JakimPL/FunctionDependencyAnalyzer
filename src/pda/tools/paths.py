@@ -3,14 +3,15 @@ from functools import wraps
 from pathlib import Path
 from typing import Any, Callable, Generic, List, Optional, Protocol, Union, overload
 
+from pda.constants import DELIMITER
 from pda.tools import logger
 from pda.types import AnyT, AnyT_co, Pathlike
 
 
-class PathlikeFunction(Protocol, Generic[AnyT_co]):
+class PathFunction(Protocol, Generic[AnyT_co]):
     __name__: str
 
-    def __call__(self, path: Pathlike, *args: Any, **kwargs: Any) -> AnyT_co: ...
+    def __call__(self, path: Path, *args: Any, **kwargs: Any) -> AnyT_co: ...
 
 
 class OptionalPathlikeFunction(Protocol, Generic[AnyT_co]):
@@ -22,16 +23,16 @@ class OptionalPathlikeFunction(Protocol, Generic[AnyT_co]):
 @overload
 def safe_path(
     default: Callable[[], AnyT],
-) -> Callable[[PathlikeFunction[AnyT]], OptionalPathlikeFunction[AnyT]]: ...
+) -> Callable[[PathFunction[AnyT]], OptionalPathlikeFunction[AnyT]]: ...
 
 
 @overload
-def safe_path(default: AnyT) -> Callable[[PathlikeFunction[AnyT]], OptionalPathlikeFunction[AnyT]]: ...
+def safe_path(default: AnyT) -> Callable[[PathFunction[AnyT]], OptionalPathlikeFunction[AnyT]]: ...
 
 
 def safe_path(
     default: Union[AnyT, Callable[[], AnyT]],
-) -> Callable[[PathlikeFunction[AnyT]], OptionalPathlikeFunction[AnyT]]:
+) -> Callable[[PathFunction[AnyT]], OptionalPathlikeFunction[AnyT]]:
     """
     Decorator that wraps a function with error handling for path operations.
     Returns the provided default value if OSError, PermissionError, or RuntimeError occurs.
@@ -53,7 +54,7 @@ def safe_path(
 
         return default
 
-    def decorator(func: PathlikeFunction[AnyT]) -> OptionalPathlikeFunction[AnyT]:
+    def decorator(func: PathFunction[AnyT]) -> OptionalPathlikeFunction[AnyT]:
         @wraps(func)
         def wrapper(path: Optional[Pathlike], *args: Any, **kwargs: Any) -> AnyT:
             value = get_default()
@@ -61,9 +62,14 @@ def safe_path(
                 if path is None:
                     return value
 
-                return func(path, *args, **kwargs)
+                return func(Path(path), *args, **kwargs)
             except (OSError, PermissionError, RuntimeError):
-                logger.warning("Error accessing path in %s, returning default value.", func.__name__)
+                logger.warning(
+                    "Error accessing path '%s' in %s, returning default value %s.",
+                    path,
+                    func.__name__,
+                    value,
+                )
                 return value
 
         return wrapper
@@ -80,7 +86,7 @@ def default_path_list_factory() -> List[Path]:
 
 
 @safe_path(default=default_path_factory)
-def resolve_path(path: Pathlike) -> Optional[Path]:
+def resolve_path(path: Path) -> Optional[Path]:
     """
     Resolves a given path to an absolute path. If the input is None, returns None.
 
@@ -93,53 +99,107 @@ def resolve_path(path: Pathlike) -> Optional[Path]:
     Returns:
         The resolved absolute path, or None if the input was None.
     """
-    return Path(path).resolve()
+    return path.resolve()
 
 
 @safe_path(default=False)
-def exists(path: Pathlike) -> bool:
+def is_symlink(path: Path) -> bool:
+    """
+    Checks if the given path is a symbolic link.
+
+    Args:
+        path: The path to check.
+
+    Returns:
+        True if the path is a symbolic link, False otherwise.
+    """
+    return path.is_symlink()
+
+
+@safe_path(default=False)
+def exists(path: Path, follow_symlinks: bool = False) -> bool:
     """
     Checks if the given path exists.
 
     Args:
         path: The path to check.
+        follow_symlinks: Whether to follow symbolic links when checking for existence.
+            Default is False.
 
     Returns:
         True if the path exists, False otherwise.
     """
-    return Path(path).exists()
+    return path.exists(follow_symlinks=follow_symlinks)
 
 
 @safe_path(default=False)
-def is_dir(path: Pathlike) -> bool:
+def is_dir(path: Path, follow_symlinks: bool = False) -> bool:
     """
     Checks if the given path is a directory.
 
     Args:
         path: The path to check.
+        follow_symlinks: Whether to follow symbolic links when checking
+            if the path is a directory. Default is False.
+
 
     Returns:
         True if the path is a directory, False otherwise.
     """
-    return Path(path).is_dir()
+    return path.is_dir(follow_symlinks=follow_symlinks)
 
 
 @safe_path(default=False)
-def is_file(path: Pathlike) -> bool:
+def is_file(path: Path, follow_symlinks: bool = False) -> bool:
     """
     Checks if the given path is a file.
 
     Args:
         path: The path to check.
+        follow_symlinks: Whether to follow symbolic links when checking
+            if the path is a file. Default is False.
 
     Returns:
         True if the path is a file, False otherwise.
     """
-    return Path(path).is_file()
+    return path.is_file(follow_symlinks=follow_symlinks)
+
+
+@safe_path(default=False)
+def is_python_file(path: Path, follow_symlinks: bool = False) -> bool:
+    """
+    Checks if the given path is a Python file (i.e., has a .py extension).
+
+    Args:
+        path: The path to check.
+        follow_symlinks: Whether to follow symbolic links when checking
+            if the path is a file. Default is False.
+
+    Returns:
+        True if the path is a Python file, False otherwise.
+    """
+    return path.is_file(follow_symlinks=follow_symlinks) and path.suffix.lower() == ".py"
+
+
+@safe_path(default=True)
+def does_skip_path(path: Path) -> bool:
+    """
+    Determines whether a given path should be skipped based on its name.
+
+    Paths that start with a dot (.) or are named "__pycache__" are considered
+    hidden or special directories and will be skipped.
+
+    Args:
+        path: The path to check.
+
+    Returns:
+        True if the path should be skipped, False otherwise.
+    """
+    return path.name.startswith(DELIMITER) or path.name == "__pycache__" or path.is_symlink()
 
 
 @safe_path(default=default_path_list_factory)
-def iterdir(path: Pathlike) -> List[Path]:
+def iterdir(path: Path) -> List[Path]:
     """
     Safely iterates over the contents of a directory,
     returning an empty list if an error occurs.
@@ -153,15 +213,11 @@ def iterdir(path: Pathlike) -> List[Path]:
         A list of Path objects representing the contents of the directory, or an empty list if an
         error occurs.
     """
-    return sorted(
-        path
-        for path in Path(path).iterdir()
-        if not path.name.startswith(".") and path.name != "__pycache__" and not path.is_symlink()
-    )
+    return sorted(path for path in path.iterdir() if not does_skip_path(path))
 
 
 @safe_path(default=default_path_list_factory)
-def glob(path: Pathlike, pattern: str) -> List[Path]:
+def glob(path: Path, pattern: str) -> List[Path]:
     """
     Safely performs a glob operation on the given path,
     returning an empty list if an error occurs.
@@ -175,7 +231,7 @@ def glob(path: Pathlike, pattern: str) -> List[Path]:
     Returns:
         A list of Path objects representing the matched files, or an empty list if an error occurs.
     """
-    return sorted(Path(path).glob(pattern))
+    return sorted(path.glob(pattern))
 
 
 def normalize_paths(paths: Union[Pathlike, Iterable[Pathlike]]) -> List[Path]:
@@ -195,3 +251,39 @@ def normalize_paths(paths: Union[Pathlike, Iterable[Pathlike]]) -> List[Path]:
         raise TypeError("Input must be a path or an iterable of paths.")
 
     return [Path(path).resolve() for path in paths]
+
+
+def filter_subdirectories(paths: Iterable[Pathlike]) -> List[Path]:
+    """
+    Filter out paths that are subdirectories of any other path in the list.
+
+    Returns only the "root" paths, removing any paths that are nested within others.
+
+    Example:
+        Input: ['/usr/lib/python3.10', '/usr/lib/python3.10/site-packages', '/home/user/project']
+        Output: ['/usr/lib/python3.10', '/home/user/project']
+
+    Args:
+        paths: An iterable of paths to filter.
+
+    Returns:
+        A sorted list of Path objects with subdirectories removed.
+    """
+    resolved_paths = [Path(path).resolve() for path in paths]
+    resolved_paths.sort(key=lambda path: len(path.parts))
+
+    filtered: List[Path] = []
+    for path in resolved_paths:
+        is_subdirectory = False
+        for root in filtered:
+            try:
+                path.relative_to(root)
+                is_subdirectory = True
+                break
+            except ValueError:
+                continue
+
+        if not is_subdirectory:
+            filtered.append(path)
+
+    return sorted(filtered)

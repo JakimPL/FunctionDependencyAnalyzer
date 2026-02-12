@@ -4,11 +4,13 @@ import ast
 from pathlib import Path
 from typing import Union
 
+from pda.tools.paths import exists, is_file
+
 
 def validate_python_file(filepath: Union[str, Path]) -> Path:
     filepath = Path(filepath)
 
-    if not filepath.exists() or not filepath.is_file():
+    if not exists(filepath) or not is_file(filepath):
         raise FileNotFoundError(f"The file {filepath} does not exist or is not a file.")
 
     if filepath.suffix != ".py":

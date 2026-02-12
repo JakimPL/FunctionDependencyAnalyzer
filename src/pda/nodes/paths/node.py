@@ -5,6 +5,8 @@ from typing import Optional
 
 from anytree import NodeMixin
 
+from pda.tools.paths import exists, is_dir, is_file, is_python_file
+
 
 class PathNode(NodeMixin):  # type: ignore[misc]
     def __init__(
@@ -15,7 +17,7 @@ class PathNode(NodeMixin):  # type: ignore[misc]
         self.filepath: Path = filepath
         self.parent: Optional[PathNode] = parent
 
-        self._has_init: bool = (filepath / "__init__.py").exists() if filepath.is_dir() else False
+        self._has_init: bool = exists(filepath / "__init__.py") if is_dir(filepath) else False
         self._is_package: bool = False
 
     def __repr__(self) -> str:
@@ -27,15 +29,15 @@ class PathNode(NodeMixin):  # type: ignore[misc]
 
     @property
     def is_file(self) -> bool:
-        return self.filepath.is_file()
+        return is_file(self.filepath)
 
     @property
     def is_python_file(self) -> bool:
-        return self.is_file and self.filepath.suffix.lower() == ".py"
+        return is_python_file(self.filepath)
 
     @property
-    def is_directory(self) -> bool:
-        return self.filepath.is_dir()
+    def is_dir(self) -> bool:
+        return is_dir(self.filepath)
 
     @property
     def is_init(self) -> bool:
@@ -54,7 +56,7 @@ class PathNode(NodeMixin):  # type: ignore[misc]
         return self._has_init
 
     def mark_as_package_if_applicable(self) -> None:
-        if not self.is_directory:
+        if not self.is_dir:
             return
 
         if self._has_init:
@@ -72,7 +74,7 @@ class PathNode(NodeMixin):  # type: ignore[misc]
             if child.is_python_file:
                 return True
 
-            if child.is_directory and child.is_package:
+            if child.is_dir and child.is_package:
                 return True
 
         return False

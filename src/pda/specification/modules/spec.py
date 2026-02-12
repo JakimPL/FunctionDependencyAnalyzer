@@ -12,6 +12,7 @@ from pda.exceptions import (
     PDARelativeBasePathError,
 )
 from pda.tools import logger
+from pda.tools.paths import is_dir, is_file, is_python_file
 
 SpecialOrigin = Literal["frozen", "built-in"]
 SPECIAL_ORIGINS = get_args(SpecialOrigin)
@@ -25,7 +26,7 @@ def is_spec_origin_valid(origin: Optional[str]) -> bool:
     if not path.is_absolute():
         return False
 
-    return path.is_file() or path.is_dir()
+    return is_file(path) or is_dir(path)
 
 
 def validate_spec_origin(spec: ModuleSpec, expect_python: bool = True) -> None:
@@ -40,12 +41,12 @@ def validate_spec_origin(spec: ModuleSpec, expect_python: bool = True) -> None:
     if not origin.is_absolute():
         raise PDARelativeBasePathError(f"Module '{name}' has non-absolute origin path: '{spec.origin}'")
 
-    if not origin.is_file():
+    if not is_file(origin):
         raise PDAOriginFileNotFoundError(
             f"Module '{name}' has origin '{spec.origin}' that does not exist or is not a file"
         )
 
-    if expect_python and origin.is_file() and origin.suffix != ".py":
+    if expect_python and not is_python_file(origin):
         raise PDAInvalidOriginTypeError(f"Module '{name}' has non-Python origin file: '{spec.origin}'")
 
 

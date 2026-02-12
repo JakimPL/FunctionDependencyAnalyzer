@@ -56,9 +56,10 @@ class PathForest(BaseForest[Path, Path, PathNode]):
         return inp
 
     def _populate_package_info(self) -> None:
+        node: PathNode
         for root in self._roots:
             for node in PostOrderIter(root):
-                if node.is_directory:
+                if node.is_dir:
                     node.mark_as_package_if_applicable()
 
     def is_package(self, path: Path) -> bool:

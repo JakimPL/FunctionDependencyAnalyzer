@@ -3,7 +3,7 @@ name = "pda"
 version = "0.0.2"
 description = "Python Dependency Analyzer - Analyze and visualize module/function dependencies in Python projects."
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.13"
 authors = [{ name = "Jakim" }]
 
 dependencies = ["anytree==2.13.0", "pydantic>=2.0.0", "networkx>=3.0"]
@@ -24,7 +24,7 @@ build-backend = "hatchling.build"
 
 [tool.black]
 line-length = 120
-target-version = ["py312"]
+target-version = ["py313"]
 
 [tool.isort]
 profile = "black"
@@ -43,7 +43,7 @@ show_missing = true
 packages = ["src/pda"]
 
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.13"
 files = "src/pda"
 exclude = ["^tests/", "^\\..*"]
 ignore_missing_imports = true
