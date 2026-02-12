@@ -1,6 +1,8 @@
 from abc import ABC, abstractmethod
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 from typing import Dict, Generic, List, Optional, Set, TypeVar, Union
+
+from anytree import LevelOrderIter
 
 from pda.nodes.types import AnyNodeT
 from pda.types import AnyT
@@ -23,6 +25,10 @@ class BaseForest(ABC, Generic[InputT, AnyT, AnyNodeT]):
             self._build_tree(item)
 
         return self._roots
+
+    def __iter__(self) -> Iterator[AnyNodeT]:
+        for root in self._roots:
+            yield from LevelOrderIter(root)
 
     def __getitem__(self, item: AnyT) -> AnyNodeT:
         item = self._prepare_item(item)

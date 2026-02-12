@@ -9,56 +9,70 @@ from anytree import NodeMixin
 class PathNode(NodeMixin):  # type: ignore[misc]
     def __init__(
         self,
-        path: Path,
+        filepath: Path,
         parent: Optional[PathNode] = None,
     ) -> None:
-        self.path: Path = path
+        self.filepath: Path = filepath
         self.parent: Optional[PathNode] = parent
 
-        self._is_package: Optional[bool] = None
-        self._has_init: bool = (path / "__init__.py").exists() if path.is_dir() else False
+        self._has_init: bool = (filepath / "__init__.py").exists() if filepath.is_dir() else False
+        self._is_package: bool = False
+
+    def __repr__(self) -> str:
+        return f"PathNode(filepath={self.filepath})"
 
     @property
     def name(self) -> str:
-        return self.path.name
+        return self.filepath.name
 
     @property
     def is_file(self) -> bool:
-        return self.path.is_file()
-
-    @property
-    def is_dir(self) -> bool:
-        return self.path.is_dir()
-
-    @property
-    def is_init(self) -> bool:
-        return self.path.name == "__init__.py"
+        return self.filepath.is_file()
 
     @property
     def is_python_file(self) -> bool:
-        return self.is_file and self.path.suffix.lower() == ".py"
+        return self.is_file and self.filepath.suffix.lower() == ".py"
+
+    @property
+    def is_directory(self) -> bool:
+        return self.filepath.is_dir()
+
+    @property
+    def is_init(self) -> bool:
+        return self.filepath.name == "__init__.py"
+
+    @property
+    def is_package(self) -> bool:
+        return self._is_package
+
+    @is_package.setter
+    def is_package(self, value: bool) -> None:
+        self._is_package = value
 
     @property
     def has_init(self) -> bool:
         return self._has_init
 
-    def is_package(self) -> bool:
-        if self._is_package is not None:
-            return self._is_package
-
-        if self.is_file:
-            self._is_package = False
-            return False
+    def mark_as_package_if_applicable(self) -> None:
+        if not self.is_directory:
+            return
 
         if self._has_init:
             self._is_package = True
-            return True
+            return
 
-        self._is_package = self._has_python_files_in_tree()
-        return self._is_package
+        if self.has_python_files_in_tree():
+            self._is_package = True
+            return
 
-    def _has_python_files_in_tree(self) -> bool:
-        if self.is_python_file:
-            return True
+        self._is_package = False
 
-        return any(child._has_python_files_in_tree() for child in self.children)
+    def has_python_files_in_tree(self) -> bool:
+        for child in self.children:
+            if child.is_python_file:
+                return True
+
+            if child.is_directory and child.is_package:
+                return True
+
+        return False

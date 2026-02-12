@@ -1,6 +1,8 @@
 from pathlib import Path
 from typing import Optional, Set
 
+from anytree import PostOrderIter
+
 from pda.nodes.base import BaseForest
 from pda.nodes.paths.node import PathNode
 from pda.tools.paths import is_dir, iterdir
@@ -24,7 +26,7 @@ class PathForest(BaseForest[Path, Path, PathNode]):
         if parent is None:
             self._roots.add(node)
 
-        if is_dir(item):
+        if not is_dir(item):
             return
 
         paths = iterdir(item)
@@ -33,6 +35,11 @@ class PathForest(BaseForest[Path, Path, PathNode]):
                 continue
 
             self._build_tree(path, parent=node)
+
+    def __call__(self) -> Set[PathNode]:
+        roots = super().__call__()
+        self._populate_package_info()
+        return roots
 
     def _create_node(
         self,
@@ -44,9 +51,18 @@ class PathForest(BaseForest[Path, Path, PathNode]):
     def _prepare_input(self, inp: Path) -> Path:
         return inp.resolve()
 
+    def _input_to_item(self, inp: Path) -> Path:
+        return inp
+
+    def _populate_package_info(self) -> None:
+        for root in self._roots:
+            for node in PostOrderIter(root):
+                if node.is_directory:
+                    node.mark_as_package_if_applicable()
+
     def is_package(self, path: Path) -> bool:
         node = self.get(path)
-        return node.is_package() if node else False
+        return node.is_package if node else False
 
     def get_python_files(self, root: Path) -> Set[Path]:
         node = self.get(root)
@@ -59,7 +75,7 @@ class PathForest(BaseForest[Path, Path, PathNode]):
 
     def _collect_python_files(self, node: PathNode, files: Set[Path]) -> None:
         if node.is_python_file:
-            files.add(node.path)
+            files.add(node.filepath)
 
         for child in node.children:
             self._collect_python_files(child, files)

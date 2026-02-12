@@ -1,3 +1,4 @@
+from pda.collector import ModulesCollector
 from pda.config import ModuleImportsAnalyzerConfig
 from pda.constants import APPLICATION_NAME
 from pda.imports import ModuleImportsAnalyzer
@@ -17,6 +18,7 @@ __all__ = [
     "Module",
     "ModuleSource",
     "ModuleImportsAnalyzer",
+    "ModulesCollector",
     "parse_python_file",
     "APPLICATION_NAME",
 ]
