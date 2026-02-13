@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any, Callable, Generic, List, Optional, Protocol, Union, overload
 
 from pda.constants import DELIMITER
-from pda.tools import logger
+from pda.tools.logger import logger
 from pda.types import AnyT, AnyT_co, Pathlike
 
 
@@ -117,7 +117,7 @@ def is_symlink(path: Path) -> bool:
 
 
 @safe_path(default=False)
-def exists(path: Path, follow_symlinks: bool = False) -> bool:
+def exists(path: Path, *, follow_symlinks: bool = False) -> bool:
     """
     Checks if the given path exists.
 
@@ -133,7 +133,7 @@ def exists(path: Path, follow_symlinks: bool = False) -> bool:
 
 
 @safe_path(default=False)
-def is_dir(path: Path, follow_symlinks: bool = False) -> bool:
+def is_dir(path: Path, *, follow_symlinks: bool = False) -> bool:
     """
     Checks if the given path is a directory.
 
@@ -150,7 +150,7 @@ def is_dir(path: Path, follow_symlinks: bool = False) -> bool:
 
 
 @safe_path(default=False)
-def is_file(path: Path, follow_symlinks: bool = False) -> bool:
+def is_file(path: Path, *, follow_symlinks: bool = False) -> bool:
     """
     Checks if the given path is a file.
 
@@ -166,7 +166,7 @@ def is_file(path: Path, follow_symlinks: bool = False) -> bool:
 
 
 @safe_path(default=False)
-def is_python_file(path: Path, follow_symlinks: bool = False) -> bool:
+def is_python_file(path: Path, *, follow_symlinks: bool = False) -> bool:
     """
     Checks if the given path is a Python file (i.e., has a .py extension).
 
@@ -248,7 +248,7 @@ def normalize_paths(paths: Union[Pathlike, Iterable[Pathlike]]) -> List[Path]:
         paths = [paths]
 
     elif not isinstance(paths, Iterable):
-        raise TypeError("Input must be a path or an iterable of paths.")
+        raise TypeError("Input must be a path or an iterable of paths")
 
     return [Path(path).resolve() for path in paths]
 

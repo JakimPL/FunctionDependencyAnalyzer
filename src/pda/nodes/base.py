@@ -1,7 +1,8 @@
 from abc import ABC, abstractmethod
 from collections.abc import Iterable, Iterator
-from typing import Dict, Generic, List, Optional, Set, Union
+from typing import Dict, Generic, List, Optional, Self, Set
 
+import networkx as nx
 from anytree import LevelOrderIter
 
 from pda.nodes.types import AnyNodeT
@@ -10,11 +11,15 @@ from pda.types import AnyT, HashableT
 
 
 class BaseForest(ABC, Generic[HashableT, AnyT, AnyNodeT]):
-    def __init__(self, items: Union[HashableT, Iterable[HashableT]]) -> None:
+    def __init__(self, items: Iterable[HashableT]) -> None:
         self._mapping: Dict[AnyT, AnyNodeT] = {}
         self._items: List[AnyT] = self._prepare_inputs(items)
         self._roots: Set[AnyNodeT] = set()
         self()
+
+    @classmethod
+    def from_item(cls, item: HashableT) -> Self:
+        return cls([item])
 
     def __bool__(self) -> bool:
         return bool(self._mapping)
@@ -33,12 +38,9 @@ class BaseForest(ABC, Generic[HashableT, AnyT, AnyNodeT]):
         item = self._prepare_item(item)
         return self._mapping[item]
 
-    def _prepare_inputs(self, inputs: Union[HashableT, Iterable[HashableT]]) -> List[AnyT]:
-        if isinstance(inputs, Iterable):
-            items: OrderedSet[HashableT] = OrderedSet[HashableT](inputs)
-            return list(map(self._prepare_input, items))
-
-        return [self._prepare_input(inputs)]
+    def _prepare_inputs(self, inputs: Iterable[HashableT]) -> List[AnyT]:
+        items: OrderedSet[HashableT] = OrderedSet[HashableT](inputs)
+        return list(map(self._prepare_input, items))
 
     @property
     def roots(self) -> Set[AnyNodeT]:
@@ -47,6 +49,20 @@ class BaseForest(ABC, Generic[HashableT, AnyT, AnyNodeT]):
     @property
     def mapping(self) -> Dict[AnyT, AnyNodeT]:
         return self._mapping.copy()
+
+    @property
+    def graph(self) -> nx.DiGraph:
+        graph = nx.DiGraph()
+        for node in self:
+            level = node.depth
+            graph.add_node(node, rank=level, level=level)
+            if node.parent is not None:
+                graph.add_edge(node.parent, node)
+
+        return graph
+
+    @abstractmethod
+    def label(self, node: AnyNodeT) -> str: ...
 
     @abstractmethod
     def _input_to_item(self, inp: HashableT) -> AnyT: ...

@@ -1,31 +1,43 @@
-from pda.exceptions.base import PDAException
+from pda.exceptions.base import PDAException, PDAWarning
 from pda.exceptions.imports import (
-    PDAEmptyOriginError,
-    PDAFrozenOriginError,
-    PDAImportError,
-    PDAImportResolutionError,
-    PDAInvalidOriginTypeError,
-    PDAMissingModuleNameError,
-    PDAMissingModuleSpecError,
-    PDAOriginFileNotFoundError,
+    PDAImportPathError,
     PDAPathResolutionError,
     PDARelativeBasePathError,
     PDASourceFileOutsideProjectError,
 )
-from pda.exceptions.paths import PDAPathNotAvailableError
+from pda.exceptions.modules import PDAMissingModuleNameError, PDAMissingTopLevelModuleError, PDAModuleError
+from pda.exceptions.options import PDAValidationOptionsWarning
+from pda.exceptions.spec import (
+    PDAFindSpecError,
+    PDAInvalidOriginTypeError,
+    PDAMissingModuleSpecError,
+    PDAModuleSpecError,
+    PDANoOriginError,
+    PDAOriginFileNotFoundError,
+    PDARelativeOriginError,
+)
 
 __all__ = [
+    # Base classes
     "PDAException",
-    "PDAImportError",
-    "PDAImportResolutionError",
+    "PDAWarning",
+    # Module-related exceptions
+    "PDAModuleError",
+    "PDAMissingModuleNameError",
+    "PDAMissingTopLevelModuleError",
+    # Import-related exceptions
+    "PDAImportPathError",
+    "PDASourceFileOutsideProjectError",
+    "PDARelativeBasePathError",
     "PDAPathResolutionError",
-    "PDAEmptyOriginError",
-    "PDAFrozenOriginError",
-    "PDAMissingModuleSpecError",
+    # Spec-related exceptions
+    "PDAModuleSpecError",
+    "PDAFindSpecError",
+    "PDANoOriginError",
+    "PDARelativeOriginError",
     "PDAOriginFileNotFoundError",
     "PDAInvalidOriginTypeError",
-    "PDASourceFileOutsideProjectError",
-    "PDAMissingModuleNameError",
-    "PDARelativeBasePathError",
-    "PDAPathNotAvailableError",
+    "PDAMissingModuleSpecError",
+    # Options-related warnings
+    "PDAValidationOptionsWarning",
 ]

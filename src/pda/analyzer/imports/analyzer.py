@@ -8,26 +8,31 @@ from typing import List, Optional, Set
 import networkx as nx
 from anytree import PreOrderIter
 
-from pda.analyzer import BaseAnalyzer
-from pda.config import ModuleImportsAnalyzerConfig
-from pda.exceptions import PDAImportError
+from pda.analyzer.base import BaseAnalyzer
+from pda.config import ModuleImportsAnalyzerConfig, ValidationOptions
+from pda.exceptions import PDAImportPathError, PDAMissingModuleSpecError
 from pda.graph import ImportGraph
 from pda.nodes import ASTForest
 from pda.specification import (
+    CategorizedModule,
+    CategorizedModuleDict,
     ImportPath,
-    Module,
     ModuleCategory,
-    ModuleDict,
+    ModulesCollection,
     ModuleSource,
     OriginType,
     SysPaths,
-    is_spec_origin_valid,
+    is_namespace_package,
+    validate_spec_origin,
 )
-from pda.tools import OrderedSet, logger
+from pda.tools import OrderedSet
+from pda.tools.logger import logger
 from pda.types import Pathlike
 
 
 class ModuleImportsAnalyzer(BaseAnalyzer[ModuleImportsAnalyzerConfig, nx.DiGraph]):
+    config: ModuleImportsAnalyzerConfig
+
     def __init__(
         self,
         config: ModuleImportsAnalyzerConfig,
@@ -37,8 +42,16 @@ class ModuleImportsAnalyzer(BaseAnalyzer[ModuleImportsAnalyzerConfig, nx.DiGraph
         super().__init__(config=config, project_root=project_root, package=package)
 
         self._filepath: Optional[Path] = None
-        self._modules: ModuleDict = {}  # TODO: change to ModulesCollection
+        self._collection: ModulesCollection = ModulesCollection(allow_unavailable=True)
         self._graph: ImportGraph = ImportGraph()
+
+        self._root_validation_options = ValidationOptions.root()
+        self._module_validation_options = ValidationOptions(
+            allow_missing_spec=True,
+            validate_origin=True,
+            expect_python=False,
+            raise_error=False,
+        )
 
     def __bool__(self) -> bool:
         return not self._graph.empty
@@ -49,7 +62,7 @@ class ModuleImportsAnalyzer(BaseAnalyzer[ModuleImportsAnalyzerConfig, nx.DiGraph
 
     def clear(self) -> None:
         self._filepath = None
-        self._modules.clear()
+        self._collection.clear()
         self._graph.clear()
 
     @property
@@ -57,9 +70,9 @@ class ModuleImportsAnalyzer(BaseAnalyzer[ModuleImportsAnalyzerConfig, nx.DiGraph
         return copy(self._filepath)
 
     @property
-    def modules(self) -> ModuleDict:
+    def modules(self) -> CategorizedModuleDict:
         self._create_graph_if_needed()
-        return self._modules.copy()
+        return self._collection.modules
 
     @property
     def graph(self) -> ImportGraph:
@@ -90,12 +103,14 @@ class ModuleImportsAnalyzer(BaseAnalyzer[ModuleImportsAnalyzerConfig, nx.DiGraph
         self._graph.add_node(root)
 
         processed: Set[Optional[Path]] = {None}
-        self._modules = {root.name: root}
-        new_modules: OrderedSet[Module] = OrderedSet([root])
+        new_modules: OrderedSet[CategorizedModule] = OrderedSet([root])
 
         while new_modules:
             module = new_modules.pop()
             if module.origin in processed:
+                continue
+
+            if module.is_namespace_package:
                 continue
 
             self._collect_new_modules(
@@ -106,7 +121,7 @@ class ModuleImportsAnalyzer(BaseAnalyzer[ModuleImportsAnalyzerConfig, nx.DiGraph
 
     def _check_graph(self) -> None:
         if self._graph.empty:
-            logger.warning("The dependency graph is empty.")
+            logger.warning("The dependency graph is empty")
 
         cycle = self._graph.find_cycle()
         if cycle is not None:
@@ -121,21 +136,27 @@ class ModuleImportsAnalyzer(BaseAnalyzer[ModuleImportsAnalyzerConfig, nx.DiGraph
         base_path: Path,
         package: str,
         processed: Optional[Set[Optional[Path]]] = None,
-    ) -> ModuleDict:
+    ) -> CategorizedModuleDict:
         """
         Analyze a Python file to extract all imported module paths,
         and return their corresponding file paths.
         """
-        tree = ASTForest(filepath)
-        module_source = ModuleSource(origin=filepath, base_path=base_path, package=package)
+        tree = ASTForest([filepath])
+        module_source = ModuleSource(
+            origin=filepath,
+            base_path=base_path,
+            package=package,
+            validation_options=self._module_validation_options,
+        )
+
         import_paths = self._collect_imports(module_source, tree, processed=processed)
         return self._collect_modules(module_source, import_paths)
 
     def analyze_module(
         self,
-        module: Module,
+        module: CategorizedModule,
         processed: Optional[Set[Optional[Path]]] = None,
-    ) -> ModuleDict:
+    ) -> CategorizedModuleDict:
         """
         Analyze a module to extract all imported module paths,
         and return their corresponding file paths.
@@ -153,13 +174,13 @@ class ModuleImportsAnalyzer(BaseAnalyzer[ModuleImportsAnalyzerConfig, nx.DiGraph
 
     def _check_if_should_scan(
         self,
-        module: Module,
+        module: CategorizedModule,
         processed: Optional[Set[Optional[Path]]] = None,
     ) -> bool:
         if module.origin_type != OriginType.PYTHON:
             return False
 
-        category = module.get_category(self._project_root)
+        category = module.category
         if not self.config.scan_stdlib and category == ModuleCategory.STDLIB:
             return False
 
@@ -215,13 +236,10 @@ class ModuleImportsAnalyzer(BaseAnalyzer[ModuleImportsAnalyzerConfig, nx.DiGraph
         self,
         module_source: ModuleSource,
         module_paths: List[ImportPath],
-    ) -> ModuleDict:
-        modules: ModuleDict = {}
+    ) -> CategorizedModuleDict:
+        modules: CategorizedModuleDict = {}
         for module_path in module_paths:
-            module = self._get_module_from_import_path(
-                module_source,
-                module_path,
-            )
+            module = self._get_module_from_import_path(module_source, module_path)
             if module is not None:
                 modules[module.name] = module
 
@@ -231,23 +249,28 @@ class ModuleImportsAnalyzer(BaseAnalyzer[ModuleImportsAnalyzerConfig, nx.DiGraph
         self,
         module_source: ModuleSource,
         module_path: ImportPath,
-    ) -> Optional[Module]:
-        try:
-            spec = module_source.get_spec(module_path)
-            package_spec = module_source.get_package_spec(module_path)
-        except (ImportError, ModuleNotFoundError, ValueError) as error:
-            logger.warning(
-                "Could not resolve import path '%s' in module '%s': %s",
+    ) -> Optional[CategorizedModule]:
+        spec = module_source.get_spec(module_path)
+        package_spec = module_source.get_package_spec(module_path)
+        if spec is None:
+            logger.debug(
+                "Module spec not found for import path '%s' (package: '%s')",
                 module_path,
-                module_source.module.name,
-                error,
+                package_spec.name if package_spec is not None else None,
             )
+            return None
+
+        if is_namespace_package(spec):
             return None
 
         try:
             package = package_spec.name if package_spec is not None else None
-            return Module.from_spec(spec, package=package)
-        except PDAImportError as import_error:
+            return CategorizedModule.from_spec(
+                spec,
+                project_root=self._project_root,
+                package=package,
+            )
+        except PDAImportPathError as import_error:
             logger.debug(
                 "%s: %s [%s]",
                 import_error.__class__.__name__,
@@ -256,7 +279,7 @@ class ModuleImportsAnalyzer(BaseAnalyzer[ModuleImportsAnalyzerConfig, nx.DiGraph
             )
             return None
 
-    def _create_root(self, filepath: Path) -> Module:
+    def _create_root(self, filepath: Path) -> CategorizedModule:
         if self._project_root is None or self._package is None:
             raise ValueError("Project root and package must be set to create the root module")
 
@@ -266,21 +289,31 @@ class ModuleImportsAnalyzer(BaseAnalyzer[ModuleImportsAnalyzerConfig, nx.DiGraph
             package=self._package,
         )
 
-        return root_source.module
+        module = CategorizedModule.create(
+            name=root_source.module.name,
+            project_root=self._project_root,
+            package=self._package,
+            validation_options=self._root_validation_options,
+        )
+
+        if module is None:
+            raise PDAMissingModuleSpecError(f"Could not create root module for {filepath}")
+
+        return module
 
     def _collect_new_modules(
         self,
-        module: Module,
-        new_modules: OrderedSet[Module],
+        module: CategorizedModule,
+        new_modules: OrderedSet[CategorizedModule],
         processed: Set[Optional[Path]],
     ) -> None:
         processed.add(module.origin)
         imported_modules = self.analyze_module(module)
         for imported_module_name, imported_module in imported_modules.items():
-            if imported_module_name not in self._modules:
-                self._modules[imported_module_name] = imported_module
+            if imported_module_name not in self._collection:
+                self._collection.add(imported_module)
 
-            target_module = self._modules[imported_module_name]
+            target_module = self._collection[imported_module_name]
             self._graph.add_edge(module, target_module)
             new_modules.add(target_module)
 
@@ -291,20 +324,20 @@ class ModuleImportsAnalyzer(BaseAnalyzer[ModuleImportsAnalyzerConfig, nx.DiGraph
         processed: Optional[Set[Optional[Path]]] = None,
     ) -> Optional[ImportPath]:
         processed = processed or set()
-        try:
-            spec = module_source.get_spec(path, validate_origin=True)
-            if not is_spec_origin_valid(spec.origin):
-                return None
-        except (ImportError, ModuleNotFoundError, ValueError, PDAImportError) as error:
-            logger.debug(
-                "%s: %s",
-                error.__class__.__name__,
-                error,
-            )
+        spec = module_source.get_spec(path)
+        if spec is None:
+            logger.debug("Module spec not found for import path '%s'", path)
             return None
 
-        origin = Path(spec.origin) if spec.origin is not None else None
-        if origin is None or origin in processed:
+        if is_namespace_package(spec):
             return None
 
-        return SysPaths.resolve(spec, base_path=module_source.base_path)
+        origin = validate_spec_origin(spec, expect_python=self._module_validation_options.expect_python)
+        if origin in processed:
+            return None
+
+        return SysPaths.resolve(
+            origin,
+            base_path=module_source.base_path,
+            validation_options=self._module_validation_options,
+        )

@@ -14,6 +14,6 @@ class ModulesCollectorConfig(BaseConfig):
         description="Maximum depth for collecting imports. None means no limit.",
     )
     node_format: ImportGraphNodeFormatEnum = Field(
-        default=ImportGraphNodeFormatEnum.NAME,
+        default=ImportGraphNodeFormatEnum.FULL,
         description="Output format for the import graph",
     )

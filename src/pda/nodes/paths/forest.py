@@ -32,9 +32,6 @@ class PathForest(BaseForest[Path, Path, PathNode]):
 
         paths = iterdir(item)
         for path in paths:
-            if path.name.startswith(".") or path.name == "__pycache__":
-                continue
-
             self._build_tree(path, parent=node)
 
     def __call__(self) -> Set[PathNode]:
@@ -48,6 +45,9 @@ class PathForest(BaseForest[Path, Path, PathNode]):
         parent: Optional[PathNode] = None,
     ) -> PathNode:
         return PathNode(item, parent=parent)
+
+    def label(self, node: PathNode) -> str:
+        return node.filepath.name
 
     def _prepare_input(self, inp: Pathlike) -> Path:
         return Path(inp).resolve()

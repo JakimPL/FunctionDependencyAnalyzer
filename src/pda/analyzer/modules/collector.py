@@ -6,28 +6,27 @@ from typing import Dict, List, Optional, Tuple, Union, overload
 
 import networkx as nx
 
-from pda.analyzer import BaseAnalyzer
-from pda.config import ModulesCollectorConfig
+from pda.analyzer.base import BaseAnalyzer
+from pda.config import ModulesCollectorConfig, ValidationOptions
 from pda.graph import ImportGraph
-from pda.nodes.paths import PathForest
-from pda.nodes.paths.node import PathNode
+from pda.nodes import PathForest, PathNode
 from pda.specification import (
+    CategorizedModule,
+    CategorizedModuleDict,
     ImportPath,
     Module,
     ModuleCategory,
-    ModuleDict,
     ModulesCollection,
-    ModuleWrapper,
-    OriginType,
     SysPaths,
-    find_module_spec,
 )
-from pda.tools import logger
+from pda.tools.logger import logger
 from pda.tools.paths import filter_subdirectories, resolve_path
 from pda.types import Pathlike
 
 
 class ModulesCollector(BaseAnalyzer[ModulesCollectorConfig, nx.DiGraph]):
+    config: ModulesCollectorConfig
+
     def __init__(
         self,
         config: Optional[ModulesCollectorConfig] = None,
@@ -36,7 +35,7 @@ class ModulesCollector(BaseAnalyzer[ModulesCollectorConfig, nx.DiGraph]):
     ) -> None:
         super().__init__(config=config, project_root=project_root, package=package)
 
-        self._modules: ModulesCollection = self._initialize_modules_collection()
+        self._collection: ModulesCollection = ModulesCollection(allow_unavailable=False)
         self._pkg_modules: Dict[str, pkgutil.ModuleInfo] = self._collect_pkg_modules()
         self._graph: ImportGraph = ImportGraph()
         self._path_forest: PathForest = self._initialize_forest()
@@ -46,42 +45,36 @@ class ModulesCollector(BaseAnalyzer[ModulesCollectorConfig, nx.DiGraph]):
         return self._graph(self.config.node_format)
 
     def __bool__(self) -> bool:
-        return any(modules for modules in self._modules.values())
+        return bool(self._collection)
 
     @overload
-    def __getitem__(self, name_or_category: ModuleCategory) -> ModuleDict: ...
+    def __getitem__(self, name_or_category: ModuleCategory) -> CategorizedModuleDict: ...
 
     @overload
-    def __getitem__(self, name_or_category: str) -> Module: ...
+    def __getitem__(self, name_or_category: str) -> CategorizedModule: ...
 
-    def __getitem__(self, name_or_category: Union[str, ModuleCategory]) -> Union[ModuleDict, Module]:
-        if isinstance(name_or_category, ModuleCategory):
-            if name_or_category == ModuleCategory.UNAVAILABLE:
-                raise ValueError("Unavailable modules are not stored in this registry.")
-
-            return self._modules[name_or_category]
-
-        for category in self.categories:
-            if name_or_category in self._modules[category]:
-                return self._modules[category][name_or_category]
-
-        raise KeyError(f"Module '{name_or_category}' not found.")
-
-    def __len__(self) -> int:
-        return sum(len(modules) for modules in self._modules.values())
+    def __getitem__(
+        self, name_or_category: Union[str, ModuleCategory]
+    ) -> Union[CategorizedModule, CategorizedModuleDict]:
+        return self._collection[name_or_category]
 
     def _collect_modules_if_needed(self, refresh: bool = False) -> None:
         if refresh or not self:
             self._collect_modules()
 
     @property
-    def categories(self) -> Tuple[ModuleCategory, ...]:
-        return tuple(category for category in ModuleCategory if category != ModuleCategory.UNAVAILABLE)
+    def collection(self) -> ModulesCollection:
+        self._collect_modules_if_needed()
+        return self._collection.copy()
 
     @property
-    def modules(self) -> ModulesCollection:
+    def categories(self) -> Tuple[ModuleCategory, ...]:
+        return self._collection.categories
+
+    @property
+    def modules(self) -> CategorizedModuleDict:
         self._collect_modules_if_needed()
-        return self._modules.copy()
+        return self._collection.modules
 
     @property
     def graph(self) -> ImportGraph:
@@ -89,19 +82,19 @@ class ModulesCollector(BaseAnalyzer[ModulesCollectorConfig, nx.DiGraph]):
         return self._graph.copy()
 
     @property
-    def stdlib(self) -> ModuleDict:
+    def stdlib(self) -> CategorizedModuleDict:
         self._collect_modules_if_needed()
-        return self._modules[ModuleCategory.STDLIB].copy()
+        return self._collection.stdlib
 
     @property
-    def external(self) -> ModuleDict:
+    def external(self) -> CategorizedModuleDict:
         self._collect_modules_if_needed()
-        return self._modules[ModuleCategory.EXTERNAL].copy()
+        return self._collection.external
 
     @property
-    def internal(self) -> ModuleDict:
+    def internal(self) -> CategorizedModuleDict:
         self._collect_modules_if_needed()
-        return self._modules[ModuleCategory.INTERNAL].copy()
+        return self._collection.internal
 
     @classmethod
     def default_config(cls) -> ModulesCollectorConfig:
@@ -109,22 +102,24 @@ class ModulesCollector(BaseAnalyzer[ModulesCollectorConfig, nx.DiGraph]):
 
     def clear(self) -> None:
         self._graph.clear()
-        self._initialize_modules_collection()
+        self._collection.clear()
 
-    def get_category(self, module: Union[str, ModuleSpec, Module]) -> ModuleCategory:
+    def get_category(self, module: Union[str, ModuleSpec, Module, CategorizedModule]) -> ModuleCategory:
         if isinstance(module, ModuleSpec):
             module = module.name
 
         if isinstance(module, str):
             module = self[module]
 
-        elif not isinstance(module, Module):
-            raise TypeError(f"Unsupported module type: {type(module)}")
+        elif not isinstance(module, (Module, CategorizedModule)):
+            raise TypeError(
+                f"Unsupported module type: {type(module)}, expected str, ModuleSpec, Module, or CategorizedModule"
+            )
+
+        if isinstance(module, CategorizedModule):
+            return module.category
 
         return module.get_category(self._project_root)
-
-    def _initialize_modules_collection(self) -> ModulesCollection:
-        return {category: {} for category in self.categories}
 
     def _initialize_forest(self) -> PathForest:
         paths: List[Path] = SysPaths.get_candidates(base_path=self._project_root)
@@ -134,7 +129,7 @@ class ModulesCollector(BaseAnalyzer[ModulesCollectorConfig, nx.DiGraph]):
     def _collect_pkg_modules(self) -> Dict[str, pkgutil.ModuleInfo]:
         return {module.name: module for module in pkgutil.iter_modules()}
 
-    def _update_graph(self, module: Module, parent: Optional[Module] = None) -> None:
+    def _update_graph(self, module: CategorizedModule, parent: Optional[CategorizedModule] = None) -> None:
         self._graph.add_node(module)
         if parent:
             self._graph.add_edge(parent, module)
@@ -144,7 +139,7 @@ class ModulesCollector(BaseAnalyzer[ModulesCollectorConfig, nx.DiGraph]):
         self._collect_external_modules()
         self._collect_internal_modules()
         if not self:
-            logger.warning("No modules collected. Check your configuration and project structure.")
+            logger.warning("No modules collected. Check your configuration and project structure")
 
     def _collect_external_modules(self) -> None:
         for pkg_module in self._pkg_modules.values():
@@ -165,16 +160,16 @@ class ModulesCollector(BaseAnalyzer[ModulesCollectorConfig, nx.DiGraph]):
             return
 
         self._add_submodules_from_files(
-            location=str(self._project_root),
+            location=self._project_root,
             base_path=self._project_root,
             package=self._package,
         )
 
     def _add_submodules_from_files(
         self,
-        location: str,
+        location: Pathlike,
         base_path: Path,
-        parent: Optional[Module] = None,
+        parent: Optional[CategorizedModule] = None,
         package: Optional[str] = None,
     ) -> None:
         origin = resolve_path(location)
@@ -185,7 +180,7 @@ class ModulesCollector(BaseAnalyzer[ModulesCollectorConfig, nx.DiGraph]):
         import_paths = self._get_import_paths(files, base_path)
         for import_path in import_paths:
             self._add_module(
-                str(import_path),
+                import_path,
                 base_path,
                 package=package,
                 parent=parent,
@@ -209,58 +204,57 @@ class ModulesCollector(BaseAnalyzer[ModulesCollectorConfig, nx.DiGraph]):
 
     def _add_module(
         self,
-        name: str,
+        name: Union[str, ImportPath],
         base_path: Path,
         package: Optional[str] = None,
-        parent: Optional[Module] = None,
+        parent: Optional[CategorizedModule] = None,
     ) -> None:
-        module_wrapper = self._get_module(name, package=package)
-        if not module_wrapper:
+        name = str(name)
+        module = self._get_module(name, package=package)
+        if not module:
             return
 
-        _, module, category = module_wrapper
-        self._modules[category][name] = module
+        self._collection.add(module)
         self._update_graph(module, parent)
-        self._add_submodules(module_wrapper, base_path, package=name)
+        self._add_submodules(module, base_path, package=name)
 
     def _add_submodules(
         self,
-        wrapper: ModuleWrapper,
+        module: CategorizedModule,
         base_path: Path,
         package: Optional[str] = None,
     ) -> None:
-        spec, parent, _ = wrapper
-        if not spec.submodule_search_locations:
+        if not module.spec.submodule_search_locations:
             return
 
-        for location in spec.submodule_search_locations:
+        for location in module.spec.submodule_search_locations:
             self._add_submodules_from_files(
                 location,
                 base_path=base_path,
-                parent=parent,
+                parent=module,
                 package=package,
             )
 
-    def _get_module(self, name: str, package: Optional[str] = None) -> Optional[ModuleWrapper]:
-        spec = find_module_spec(name, package=package)
-        if not spec:
-            logger.warning("Module '%s' not found", name)
+    def _get_module(
+        self,
+        name: str,
+        package: Optional[str] = None,
+    ) -> Optional[CategorizedModule]:
+        module = CategorizedModule.create(
+            name,
+            project_root=self._project_root,
+            package=package,
+            validation_options=ValidationOptions.root(),
+        )
+
+        if module is None:
             return None
 
-        if spec.origin == OriginType.FROZEN:
-            logger.debug("Skipping frozen module: %s", name)
+        category = module.category
+        if name in self._collection[category]:
             return None
 
-        if spec.origin == OriginType.BUILT_IN:
-            logger.debug("Skipping built-in module: %s", name)
-            return None
-
-        module = Module.from_spec(spec, package=package)
-        category = module.get_category(self._project_root)
-        if name in self._modules[category]:
-            return None
-
-        return ModuleWrapper(spec, module, category)
+        return module
 
     def _get_submodule_paths(self, origin: Optional[Path]) -> List[Path]:
         if origin is None:

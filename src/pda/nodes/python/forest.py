@@ -36,5 +36,8 @@ class ASTForest(BaseForest[Path, ast.AST, ASTNode[Any]]):
     ) -> ASTNode[Any]:
         return ASTNode[Any](item, parent=parent)
 
+    def label(self, node: ASTNode[Any]) -> str:
+        return node.name
+
     def _input_to_item(self, inp: Path) -> ast.Module:
         return parse_python_file(inp)

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import sys
 from importlib.machinery import ModuleSpec
-from importlib.util import find_spec
 from pathlib import Path
 from typing import Optional, Self, Tuple
 
@@ -13,7 +12,7 @@ from pda.exceptions import PDAInvalidOriginTypeError, PDAMissingModuleNameError,
 from pda.specification.base import Specification
 from pda.specification.modules.category import ModuleCategory
 from pda.specification.modules.origin import OriginType
-from pda.specification.modules.spec import validate_spec
+from pda.specification.modules.spec import find_module_spec, validate_spec
 from pda.tools.paths import resolve_path
 
 
@@ -30,9 +29,9 @@ class Module(Specification):
         default=OriginType.PYTHON,
         description="Type of the origin, e.g. file, frozen, or built-in",
     )
-    submodule_search_locations: Tuple[Path, ...] = Field(
-        default_factory=tuple,
-        description="List of directories to search for submodules. Only for packages.",
+    submodule_search_locations: Optional[Tuple[Path, ...]] = Field(
+        default=None,
+        description="Tuple of directories to search for submodules. Only for packages.",
     )
 
     @model_validator(mode="after")
@@ -65,12 +64,20 @@ class Module(Specification):
         return self.name == self.top_level_module
 
     @property
+    def is_module(self) -> bool:
+        return not self.is_package
+
+    @property
     def is_package(self) -> bool:
-        return bool(self.submodule_search_locations)
+        return self.submodule_search_locations is not None
+
+    @property
+    def is_namespace_package(self) -> bool:
+        return self.is_package and self.origin is None
 
     @property
     def base_path(self) -> Path:
-        spec = find_spec(self.top_level_module)
+        spec = find_module_spec(self.top_level_module)
         path: Optional[Path] = None
         if spec and spec.origin:
             if spec.submodule_search_locations:
@@ -116,8 +123,14 @@ class Module(Specification):
         """
         Convert the Module instance back to a ModuleSpec for compatibility with importlib.
         """
-        spec = find_spec(self.name, package=self.package)
-        return validate_spec(spec, validate_origin=False, expect_python=False)
+        return find_module_spec(
+            self.name,
+            package=self.package,
+            allow_missing_spec=False,
+            raise_error=True,
+            validate_origin=False,
+            expect_python=False,
+        )
 
     def get_category(self, base_path: Optional[Path] = None) -> ModuleCategory:
         """

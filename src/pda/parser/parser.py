@@ -11,10 +11,10 @@ def validate_python_file(filepath: Union[str, Path]) -> Path:
     filepath = Path(filepath)
 
     if not exists(filepath) or not is_file(filepath):
-        raise FileNotFoundError(f"The file {filepath} does not exist or is not a file.")
+        raise FileNotFoundError(f"The file {filepath} does not exist or is not a file")
 
     if filepath.suffix != ".py":
-        raise ValueError(f"The file {filepath} is not a Python (.py) file.")
+        raise ValueError(f"The file {filepath} is not a Python (.py) file")
 
     return filepath
 

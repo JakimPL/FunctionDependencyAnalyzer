@@ -15,6 +15,6 @@ class ModuleImportsAnalyzerConfig(BaseConfig):
     max_depth: Optional[int] = Field(default=None, description="Limit recursion depth")
     follow_conditional: bool = Field(default=True, description="Analyze try/except branches")
     node_format: ImportGraphNodeFormatEnum = Field(
-        default=ImportGraphNodeFormatEnum.NAME,
+        default=ImportGraphNodeFormatEnum.FULL,
         description="Output format for the import graph",
     )

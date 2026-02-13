@@ -150,7 +150,11 @@ class ImportPath(Specification):
 
     def get_module_path(self) -> Self:
         cls = self.__class__
-        return cls(module=self.module, level=self.level, asname=self.asname if self.is_module else None)
+        return cls(
+            module=self.module,
+            level=self.level,
+            asname=self.asname if self.is_module else None,
+        )
 
     def get_parent(self, levels: int = 1) -> Self:
         if levels < 0:

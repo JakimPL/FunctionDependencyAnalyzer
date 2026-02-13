@@ -3,6 +3,7 @@ from importlib.machinery import ModuleSpec
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
 
+from pda.config import ValidationOptions
 from pda.exceptions import PDAPathResolutionError, PDARelativeBasePathError
 from pda.specification.imports import ImportPath
 from pda.specification.modules.spec import validate_spec_origin
@@ -37,19 +38,37 @@ class SysPaths(metaclass=Singleton):
     @classmethod
     def resolve(
         cls,
-        origin: Union[Path, ModuleSpec],
+        spec_or_origin: Optional[Union[Pathlike, ModuleSpec]],
         base_path: Optional[Pathlike] = None,
-    ) -> ImportPath:
-        if isinstance(origin, ModuleSpec):
-            validate_spec_origin(origin)
-            assert origin.origin is not None
-            origin = Path(origin.origin)
+        validation_options: Optional[ValidationOptions] = None,
+    ) -> Optional[ImportPath]:
+        origin: Optional[Path] = None
+        options: ValidationOptions = validation_options or ValidationOptions.root()
+        if isinstance(spec_or_origin, ModuleSpec):
+            if options.validate_origin:
+                origin = validate_spec_origin(
+                    spec_or_origin,
+                    expect_python=options.expect_python,
+                )
 
-        if not origin.is_absolute():
-            raise PDAPathResolutionError(f"Provided path must be absolute, got: {origin}")
+        elif isinstance(spec_or_origin, (str, Path)):
+            origin = Path(spec_or_origin)
 
+        else:
+            raise TypeError(f"Expected ModuleSpec or path-like object, got: {type(spec_or_origin)}")
+
+        if origin is None or not origin.is_absolute():
+            return None
+
+        return cls.resolve_import_path(origin, base_path)
+
+    @classmethod
+    def resolve_import_path(cls, origin: Path, base_path: Optional[Pathlike]) -> ImportPath:
         import_path: Optional[ImportPath] = None
         candidates = cls.get_candidates(base_path=base_path)
+        if not candidates:
+            raise PDAPathResolutionError("No candidate paths available for resolving the origin path")
+
         for candidate in candidates:
             import_path = ImportPath.from_path(origin, candidate)
             if import_path is not None:

@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Any, Generic, Optional
 
 from pda.config import ConfigT
-from pda.tools import logger
+from pda.tools.logger import logger
 from pda.types import AnyT, Pathlike
 
 
@@ -14,7 +14,7 @@ class BaseAnalyzer(ABC, Generic[ConfigT, AnyT]):
         project_root: Optional[Pathlike] = None,
         package: Optional[str] = None,
     ) -> None:
-        self.config = self.default_config() if config is None else config
+        self.config = config or self.default_config()
         self._project_root = Path(project_root).resolve() if project_root is not None else None
         self._package = package
 
@@ -43,7 +43,7 @@ class BaseAnalyzer(ABC, Generic[ConfigT, AnyT]):
     def project_root(self, value: Optional[Pathlike]) -> None:
         self._project_root = Path(value).resolve() if value is not None else None
         if self:
-            logger.info("Project root changed. Clearing the graph and modules.")
+            logger.info("Project root changed. Clearing the graph and modules")
 
         self.clear()
 

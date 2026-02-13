@@ -57,6 +57,9 @@ class BaseGraph(Generic[NodeT], ABC):
             self.add_node(to_module)
             self._graph.add_edge(from_module, to_module)
 
+    @abstractmethod
+    def label(self, node: NodeT) -> str: ...
+
     @property
     def empty(self) -> bool:
         return len(self) == 0
