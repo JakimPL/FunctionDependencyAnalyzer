@@ -1,4 +1,5 @@
-from typing import Any, Dict, Generic, Iterator, List, Optional, Self
+import json
+from typing import Any, Dict, Generic, Iterator, List, Optional, Self, Union
 
 import networkx as nx
 from pyvis.network import Network
@@ -95,9 +96,15 @@ class Graph(Generic[NodeT]):
     def from_forest(cls, forest: BaseForest[Any, NodeT, Any]) -> Self:
         return cls(graph=forest.graph)
 
-    def to_pyvis(self) -> Network:
+    def to_pyvis(
+        self,
+        *,
+        options: Optional[Union[str, Dict[str, Any]]] = None,
+        **kwargs: Any,
+    ) -> Network:
         self.sort_if_possible()
-        pyvis_graph = Network(directed=True)
+        print(kwargs)
+        pyvis_graph = Network(directed=True, **kwargs)
         node_map: Dict[NodeT, int] = {}
         for i, node in enumerate(self):
             node_map[node] = i
@@ -119,6 +126,12 @@ class Graph(Generic[NodeT]):
                 title=self.edge_label(from_node, to_node),
             )
 
+        if options:
+            if isinstance(options, dict):
+                options = json.dumps(options)
+
+            pyvis_graph.set_options(options)
+
         return pyvis_graph
 
     @staticmethod
@@ -136,6 +149,8 @@ class Graph(Generic[NodeT]):
             if node in roots:
                 graph.nodes[node]["level"] = 0
             else:
-                graph.nodes[node]["level"] = max(graph.nodes[pred]["level"] for pred in graph.predecessors(node)) + 1
+                graph.nodes[node]["level"] = (
+                    max(graph.nodes[predecessor]["level"] for predecessor in graph.predecessors(node)) + 1
+                )
 
         return graph

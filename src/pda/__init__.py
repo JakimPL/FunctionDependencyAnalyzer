@@ -1,5 +1,5 @@
 from pda.analyzer import ModuleImportsAnalyzer, ModulesCollector
-from pda.config import ModuleImportsAnalyzerConfig, ModulesCollectorConfig
+from pda.config import ModuleImportsAnalyzerConfig, ModuleScanConfig, ModulesCollectorConfig
 from pda.constants import APPLICATION_NAME
 from pda.graph import Graph, ModuleGraph, PathGraph
 from pda.nodes import ASTForest, ASTNode, PathForest, PathNode
@@ -17,6 +17,7 @@ __all__ = [
     "ModuleGraph",
     "PathGraph",
     # Configs
+    "ModuleScanConfig",
     "ModuleImportsAnalyzerConfig",
     "ModulesCollectorConfig",
     # Specification

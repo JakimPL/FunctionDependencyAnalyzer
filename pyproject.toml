@@ -6,7 +6,12 @@ readme = "README.md"
 requires-python = ">=3.13"
 authors = [{ name = "Jakim" }]
 
-dependencies = ["anytree==2.13.0", "pydantic>=2.0.0", "networkx>=3.0"]
+dependencies = [
+    "anytree==2.13.0",
+    "networkx==3.6.1",
+    "pydantic==2.12.5",
+    "pyvis==0.3.2",
+]
 
 [project.optional-dependencies]
 dev = [
