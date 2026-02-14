@@ -1,45 +1,41 @@
-from abc import ABC, abstractmethod
-from typing import Any, Generic, List, Optional, Self, Type
+from typing import Any, Dict, Generic, Iterator, List, Optional, Self
 
 import networkx as nx
+from pyvis.network import Network
 
-from pda.config import GraphOptions
 from pda.graph.types import Edge, NodeT
+from pda.nodes import BaseForest
+from pda.tools import logger
 
 
-class BaseGraph(Generic[NodeT], ABC):
+class Graph(Generic[NodeT]):
     """
     Base graph class for Python Dependency Analyzer.
     """
 
-    graph_type: Type[nx.Graph]
+    def __init__(self, graph: Optional[nx.DiGraph] = None) -> None:
+        self._graph = self._sort_if_possible(graph or nx.DiGraph())
 
-    def __init_subclass__(cls, graph_type: Type[nx.Graph] = nx.DiGraph) -> None:
-        super().__init_subclass__()
-        cls.graph_type = graph_type
-
-    def __init__(self, options: Optional[GraphOptions] = None, graph: Optional[nx.Graph] = None) -> None:
-        self.config = options or GraphOptions()
-        self._graph = graph or self.__class__.graph_type()
+    def __iter__(self) -> Iterator[NodeT]:
+        return iter(self._graph.nodes)
 
     def __len__(self) -> int:
         return int(self._graph.number_of_nodes())
-
-    @abstractmethod
-    def __call__(self, *args: Any, **kwargs: Any) -> nx.Graph:
-        """
-        Create the output graph based on the provided options.
-        """
 
     def clear(self) -> None:
         self._graph.clear()
 
     def copy(self) -> Self:
         cls = self.__class__
-        return cls(
-            options=self.config,
-            graph=self._graph.copy(),
-        )
+        return cls(graph=self._graph.copy())
+
+    @property
+    def nodes(self) -> List[NodeT]:
+        return list(self._graph.nodes)
+
+    @property
+    def edges(self) -> List[Edge[NodeT]]:
+        return list(self._graph.edges)
 
     def has_node(self, module: NodeT) -> bool:
         return bool(self._graph.has_node(module))
@@ -57,8 +53,19 @@ class BaseGraph(Generic[NodeT], ABC):
             self.add_node(to_module)
             self._graph.add_edge(from_module, to_module)
 
-    @abstractmethod
-    def label(self, node: NodeT) -> str: ...
+    def label(self, node: NodeT) -> str:
+        return str(node)
+
+    def level(self, node: NodeT) -> int:
+        return int(self._graph.nodes[node].get("level", 0))
+
+    def group(self, node: NodeT) -> Optional[str]:
+        return None
+
+    def edge_label(self, from_node: NodeT, to_node: NodeT) -> str:
+        from_label = self.label(from_node)
+        to_label = self.label(to_node)
+        return f"{from_label} → {to_label}"
 
     @property
     def empty(self) -> bool:
@@ -81,7 +88,54 @@ class BaseGraph(Generic[NodeT], ABC):
 
         return []
 
-    def relabel(self, graph: Optional[nx.Graph] = None) -> nx.Graph:
-        graph = graph or self._graph
-        mapping = {node: self.label(node) for node in graph.nodes}
-        return nx.relabel_nodes(graph, mapping)
+    def sort_if_possible(self) -> None:
+        self._graph = self._sort_if_possible(self._graph)
+
+    @classmethod
+    def from_forest(cls, forest: BaseForest[Any, NodeT, Any]) -> Self:
+        return cls(graph=forest.graph)
+
+    def to_pyvis(self) -> Network:
+        self.sort_if_possible()
+        pyvis_graph = Network(directed=True)
+        node_map: Dict[NodeT, int] = {}
+        for i, node in enumerate(self):
+            node_map[node] = i
+            label: str = self.label(node)
+            group: Optional[str] = self.group(node)
+            level: int = self.level(node)
+            pyvis_graph.add_node(
+                i,
+                label=label,
+                title=label,
+                level=level,
+                group=group,
+            )
+
+        for from_node, to_node in self.edges:
+            pyvis_graph.add_edge(
+                node_map[from_node],
+                node_map[to_node],
+                title=self.edge_label(from_node, to_node),
+            )
+
+        return pyvis_graph
+
+    @staticmethod
+    def _sort_if_possible(graph: nx.DiGraph) -> nx.DiGraph:
+        if not nx.is_directed_acyclic_graph(graph):
+            logger.debug("Graph has cycles, skipping topological sort")
+            return graph
+
+        return Graph._sort(graph)
+
+    @staticmethod
+    def _sort(graph: nx.DiGraph) -> nx.DiGraph:
+        roots = [node for node in graph.nodes() if graph.in_degree(node) == 0]
+        for node in nx.topological_sort(graph):
+            if node in roots:
+                graph.nodes[node]["level"] = 0
+            else:
+                graph.nodes[node]["level"] = max(graph.nodes[pred]["level"] for pred in graph.predecessors(node)) + 1
+
+        return graph

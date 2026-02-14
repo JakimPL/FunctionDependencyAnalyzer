@@ -49,6 +49,9 @@ class PathForest(BaseForest[Path, Path, PathNode]):
     def label(self, node: PathNode) -> str:
         return node.filepath.name
 
+    def item(self, node: PathNode) -> Path:
+        return node.filepath
+
     def _prepare_input(self, inp: Pathlike) -> Path:
         return Path(inp).resolve()
 

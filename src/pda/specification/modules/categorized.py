@@ -50,6 +50,10 @@ class CategorizedModule(NamedTuple):
         return self.module.top_level_module
 
     @property
+    def is_top_level(self) -> bool:
+        return self.module.is_top_level
+
+    @property
     def is_module(self) -> bool:
         return self.module.is_module
 

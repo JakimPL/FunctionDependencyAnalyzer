@@ -6,6 +6,7 @@ __pycache__/
 .vscode/
 .github/
 .venv/
+lib/
 
 **/*.idea
 **/*.vscode/**
@@ -23,5 +24,9 @@ __pycache__/
 *.dot
 *.pdf
 *.svg
+
+*.html
+*.js
+*.css
 
 *.ipynb

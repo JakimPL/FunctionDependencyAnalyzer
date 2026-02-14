@@ -1,3 +1,4 @@
+from functools import lru_cache
 from importlib.machinery import ModuleSpec
 from importlib.util import find_spec
 from pathlib import Path
@@ -93,6 +94,7 @@ def find_module_spec(
 ) -> Optional[ModuleSpec]: ...
 
 
+@lru_cache(maxsize=None)
 def find_module_spec(
     name: str,
     package: Optional[str] = None,

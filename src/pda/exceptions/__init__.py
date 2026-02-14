@@ -6,7 +6,7 @@ from pda.exceptions.imports import (
     PDASourceFileOutsideProjectError,
 )
 from pda.exceptions.modules import PDAMissingModuleNameError, PDAMissingTopLevelModuleError, PDAModuleError
-from pda.exceptions.options import PDAValidationOptionsWarning
+from pda.exceptions.options import PDACategoryDisabledWarning, PDAOptionsWarning, PDAValidationOptionsWarning
 from pda.exceptions.spec import (
     PDAFindSpecError,
     PDAInvalidOriginTypeError,
@@ -39,5 +39,7 @@ __all__ = [
     "PDAInvalidOriginTypeError",
     "PDAMissingModuleSpecError",
     # Options-related warnings
+    "PDAOptionsWarning",
     "PDAValidationOptionsWarning",
+    "PDACategoryDisabledWarning",
 ]

@@ -1,14 +1,15 @@
 import pkgutil
 import sys
+import warnings
 from importlib.machinery import ModuleSpec
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union, overload
 
-import networkx as nx
-
 from pda.analyzer.base import BaseAnalyzer
+from pda.analyzer.lazy import lazy_execution
 from pda.config import ModulesCollectorConfig, ValidationOptions
-from pda.graph import ImportGraph
+from pda.exceptions import PDACategoryDisabledWarning
+from pda.graph import ModuleGraph
 from pda.nodes import PathForest, PathNode
 from pda.specification import (
     CategorizedModule,
@@ -24,7 +25,7 @@ from pda.tools.paths import filter_subdirectories, resolve_path
 from pda.types import Pathlike
 
 
-class ModulesCollector(BaseAnalyzer[ModulesCollectorConfig, nx.DiGraph]):
+class ModulesCollector(BaseAnalyzer[ModulesCollectorConfig, ModuleGraph]):
     config: ModulesCollectorConfig
 
     def __init__(
@@ -37,14 +38,10 @@ class ModulesCollector(BaseAnalyzer[ModulesCollectorConfig, nx.DiGraph]):
 
         self._collection: ModulesCollection = ModulesCollection(allow_unavailable=False)
         self._pkg_modules: Dict[str, pkgutil.ModuleInfo] = self._collect_pkg_modules()
-        self._graph: ImportGraph = ImportGraph()
+        self._graph: ModuleGraph = ModuleGraph()
         self._path_forest: PathForest = self._initialize_forest()
 
         self._module_validation_options = ValidationOptions.permissive()
-
-    def __call__(self, refresh: bool = False) -> nx.DiGraph:
-        self._collect_modules_if_needed(refresh=refresh)
-        return self._graph(self.config.node_format)
 
     def __bool__(self) -> bool:
         return bool(self._collection)
@@ -60,13 +57,15 @@ class ModulesCollector(BaseAnalyzer[ModulesCollectorConfig, nx.DiGraph]):
     ) -> Union[CategorizedModule, CategorizedModuleDict]:
         return self._collection[name_or_category]
 
-    def _collect_modules_if_needed(self, refresh: bool = False) -> None:
+    def _analyze_if_needed(self, *, refresh: bool = False) -> ModuleGraph:
         if refresh or not self:
             self._collect_modules()
 
+        return self._graph
+
     @property
+    @lazy_execution
     def collection(self) -> ModulesCollection:
-        self._collect_modules_if_needed()
         return self._collection.copy()
 
     @property
@@ -74,33 +73,47 @@ class ModulesCollector(BaseAnalyzer[ModulesCollectorConfig, nx.DiGraph]):
         return self._collection.categories
 
     @property
+    @lazy_execution
     def modules(self) -> CategorizedModuleDict:
-        self._collect_modules_if_needed()
         return self._collection.modules
 
     @property
-    def graph(self) -> ImportGraph:
-        self._collect_modules_if_needed()
+    @lazy_execution
+    def graph(self) -> ModuleGraph:
         return self._graph.copy()
 
     @property
+    @lazy_execution
     def stdlib(self) -> CategorizedModuleDict:
-        self._collect_modules_if_needed()
+        if not self.config.scan_stdlib:
+            warnings.warn(
+                "Accessing 'stdlib' category while 'scan_stdlib' is False. This category will be empty.",
+                PDACategoryDisabledWarning,
+            )
+
         return self._collection.stdlib
 
     @property
+    @lazy_execution
     def external(self) -> CategorizedModuleDict:
-        self._collect_modules_if_needed()
+        if not self.config.scan_external:
+            warnings.warn(
+                "Accessing 'external' category while 'scan_external' is False. This category will be empty.",
+                PDACategoryDisabledWarning,
+            )
+
         return self._collection.external
 
     @property
+    @lazy_execution
     def internal(self) -> CategorizedModuleDict:
-        self._collect_modules_if_needed()
-        return self._collection.internal
+        if self.project_root is None:
+            warnings.warn(
+                "Accessing 'internal' category while 'project_root' is None. This category will be empty.",
+                PDACategoryDisabledWarning,
+            )
 
-    @classmethod
-    def default_config(cls) -> ModulesCollectorConfig:
-        return ModulesCollectorConfig()
+        return self._collection.internal
 
     def clear(self) -> None:
         self._graph.clear()
@@ -287,3 +300,7 @@ class ModulesCollector(BaseAnalyzer[ModulesCollectorConfig, nx.DiGraph]):
                 paths.append(child.filepath)
 
         return sorted(paths)
+
+    @classmethod
+    def default_config(cls) -> ModulesCollectorConfig:
+        return ModulesCollectorConfig()

@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, Generic, Optional
+from typing import Generic, Optional
 
 from pda.config import ConfigT
 from pda.tools.logger import logger
@@ -18,22 +18,20 @@ class BaseAnalyzer(ABC, Generic[ConfigT, AnyT]):
         self._project_root = Path(project_root).resolve() if project_root is not None else None
         self._package = package
 
-    @classmethod
-    @abstractmethod
-    def default_config(cls) -> ConfigT:
-        """Return the default configuration for this analyzer."""
-
     @abstractmethod
     def __bool__(self) -> bool:
         """Return True if the analyzer has processed data, False otherwise."""
 
-    @abstractmethod
-    def __call__(self, *args: Any, **kwargs: Any) -> AnyT:
-        """Run the analyzer and return the result."""
+    def __call__(self, *, refresh: bool = False) -> AnyT:
+        return self._analyze_if_needed(refresh=refresh)
 
     @abstractmethod
     def clear(self) -> None:
         """Clear the analyzer's internal state."""
+
+    @abstractmethod
+    def _analyze_if_needed(self, *, refresh: bool = False) -> AnyT:
+        """Perform analysis if needed, optionally refreshing the data."""
 
     @property
     def project_root(self) -> Optional[Path]:
@@ -58,3 +56,8 @@ class BaseAnalyzer(ABC, Generic[ConfigT, AnyT]):
             logger.info("Package changed. Clearing the graph and modules.")
 
         self.clear()
+
+    @classmethod
+    @abstractmethod
+    def default_config(cls) -> ConfigT:
+        """Return the default configuration for this analyzer."""

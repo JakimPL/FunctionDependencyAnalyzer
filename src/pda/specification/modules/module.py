@@ -3,13 +3,14 @@ from __future__ import annotations
 import sys
 from importlib.machinery import ModuleSpec
 from pathlib import Path
-from typing import Optional, Self, Tuple
+from typing import Any, Dict, Optional, Self, Tuple
 
 from pydantic import Field, model_validator
 
 from pda.constants import DELIMITER
 from pda.exceptions import PDAInvalidOriginTypeError, PDAMissingModuleNameError, PDAPathResolutionError
 from pda.specification.base import Specification
+from pda.specification.imports.path import ImportPath
 from pda.specification.modules.category import ModuleCategory
 from pda.specification.modules.origin import OriginType
 from pda.specification.modules.spec import find_module_spec, validate_spec
@@ -32,6 +33,10 @@ class Module(Specification):
     submodule_search_locations: Optional[Tuple[Path, ...]] = Field(
         default=None,
         description="Tuple of directories to search for submodules. Only for packages.",
+    )
+    metadata: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Additional metadata about the module",
     )
 
     @model_validator(mode="after")
@@ -74,6 +79,10 @@ class Module(Specification):
     @property
     def is_namespace_package(self) -> bool:
         return self.is_package and self.origin is None
+
+    @property
+    def import_path(self) -> ImportPath:
+        return ImportPath.from_string(self.name)
 
     @property
     def base_path(self) -> Path:

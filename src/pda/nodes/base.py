@@ -54,17 +54,27 @@ class BaseForest(ABC, Generic[HashableT, AnyT, AnyNodeT]):
     def graph(self) -> nx.DiGraph:
         graph = nx.DiGraph()
         for node in self:
+            item = self.item(node)
             label = self.label(node)
             level = node.depth
-            graph.add_node(label, rank=level, level=level)
+            graph.add_node(item, label=label, rank=level, level=level)
             if node.parent is not None:
-                parent_label = self.label(node.parent)
-                graph.add_edge(parent_label, label)
+                parent_item = self.item(node.parent)
+                edge_label = self.edge_label(node.parent, node)
+                graph.add_edge(parent_item, item, label=edge_label)
 
         return graph
 
     @abstractmethod
     def label(self, node: AnyNodeT) -> str: ...
+
+    @abstractmethod
+    def item(self, node: AnyNodeT) -> AnyT: ...
+
+    def edge_label(self, from_node: AnyNodeT, to_node: AnyNodeT) -> str:
+        from_label = self.label(from_node)
+        to_label = self.label(to_node)
+        return f"{from_label} → {to_label}"
 
     @abstractmethod
     def _input_to_item(self, inp: HashableT) -> AnyT: ...

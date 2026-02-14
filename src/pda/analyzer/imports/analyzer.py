@@ -3,15 +3,15 @@ from __future__ import annotations
 import ast
 from copy import copy
 from pathlib import Path
-from typing import List, Optional, Set
+from typing import List, Optional, Set, override
 
-import networkx as nx
 from anytree import PreOrderIter
 
 from pda.analyzer.base import BaseAnalyzer
+from pda.analyzer.lazy import lazy_execution
 from pda.config import ModuleImportsAnalyzerConfig, ValidationOptions
 from pda.exceptions import PDAImportPathError, PDAMissingModuleSpecError
-from pda.graph import ImportGraph
+from pda.graph import ModuleGraph
 from pda.nodes import ASTForest
 from pda.specification import (
     CategorizedModule,
@@ -30,7 +30,7 @@ from pda.tools.logger import logger
 from pda.types import Pathlike
 
 
-class ModuleImportsAnalyzer(BaseAnalyzer[ModuleImportsAnalyzerConfig, nx.DiGraph]):
+class ModuleImportsAnalyzer(BaseAnalyzer[ModuleImportsAnalyzerConfig, ModuleGraph]):
     config: ModuleImportsAnalyzerConfig
 
     def __init__(
@@ -43,7 +43,7 @@ class ModuleImportsAnalyzer(BaseAnalyzer[ModuleImportsAnalyzerConfig, nx.DiGraph
 
         self._filepath: Optional[Path] = None
         self._collection: ModulesCollection = ModulesCollection(allow_unavailable=True)
-        self._graph: ImportGraph = ImportGraph()
+        self._graph: ModuleGraph = ModuleGraph()
 
         self._root_validation_options = ValidationOptions.root()
         self._module_validation_options = ValidationOptions(
@@ -56,9 +56,14 @@ class ModuleImportsAnalyzer(BaseAnalyzer[ModuleImportsAnalyzerConfig, nx.DiGraph
     def __bool__(self) -> bool:
         return not self._graph.empty
 
-    def __call__(self, filepath: Path, refresh: bool = False) -> nx.DiGraph:
-        self._create_graph_if_needed(filepath, refresh=refresh)
-        return self._graph(self.config.node_format)
+    @override
+    def __call__(
+        self,
+        filepath: Optional[Path] = None,
+        *,
+        refresh: bool = False,
+    ) -> ModuleGraph:
+        return self._analyze_if_needed(filepath=filepath, refresh=refresh)
 
     def clear(self) -> None:
         self._filepath = None
@@ -70,30 +75,29 @@ class ModuleImportsAnalyzer(BaseAnalyzer[ModuleImportsAnalyzerConfig, nx.DiGraph
         return copy(self._filepath)
 
     @property
+    @lazy_execution
     def modules(self) -> CategorizedModuleDict:
-        self._create_graph_if_needed()
         return self._collection.modules
 
     @property
-    def graph(self) -> ImportGraph:
-        self._create_graph_if_needed()
+    @lazy_execution
+    def graph(self) -> ModuleGraph:
         return self._graph.copy()
 
-    @classmethod
-    def default_config(cls) -> ModuleImportsAnalyzerConfig:
-        return ModuleImportsAnalyzerConfig()
-
-    def _create_graph_if_needed(
+    def _analyze_if_needed(
         self,
         filepath: Optional[Path] = None,
+        *,
         refresh: bool = False,
-    ) -> None:
+    ) -> ModuleGraph:
         filepath = filepath or self._filepath
         if not filepath:
             raise ValueError("No module has been analyzed yet")
 
         if refresh or not self or self._filepath != filepath:
             self._create_graph(filepath)
+
+        return self._graph
 
     def _create_graph(self, filepath: Path) -> None:
         self.clear()
@@ -349,3 +353,7 @@ class ModuleImportsAnalyzer(BaseAnalyzer[ModuleImportsAnalyzerConfig, nx.DiGraph
             base_path=module_source.base_path,
             validation_options=self._module_validation_options,
         )
+
+    @classmethod
+    def default_config(cls) -> ModuleImportsAnalyzerConfig:
+        return ModuleImportsAnalyzerConfig()
