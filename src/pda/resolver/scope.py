@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional, Tuple
 
-from pda.nodes.python.node import ASTNode
+from pda.models.python.node import ASTNode
 from pda.specification import Symbol
 
 

@@ -4,9 +4,9 @@ import ast
 from pathlib import Path
 from typing import Any, Optional
 
-from pda.nodes.base import BaseForest
-from pda.nodes.python.node import ASTNode
-from pda.parser.parser import parse_python_file
+from pda.models.python.node import ASTNode
+from pda.parser import parse_python_file
+from pda.structures.forest.base import BaseForest
 
 
 class ASTForest(BaseForest[Path, ast.AST, ASTNode[Any]]):

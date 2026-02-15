@@ -2,9 +2,8 @@ from typing import Dict, FrozenSet, Self, override
 
 import networkx as nx
 
-from pda.graph.base import Graph
-from pda.specification import CategorizedModule
-from pda.specification.modules.spec import find_module_spec
+from pda.specification import CategorizedModule, find_module_spec
+from pda.structures.graph.base import Graph
 
 
 class ModuleGraph(Graph[CategorizedModule]):

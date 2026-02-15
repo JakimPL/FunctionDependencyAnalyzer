@@ -9,8 +9,7 @@ from pda.analyzer.base import BaseAnalyzer
 from pda.analyzer.lazy import lazy_execution
 from pda.config import ModulesCollectorConfig, ValidationOptions
 from pda.exceptions import PDACategoryDisabledWarning
-from pda.graph import ModuleGraph
-from pda.nodes import PathForest, PathNode
+from pda.models import ModuleGraph, PathForest, PathNode
 from pda.specification import (
     CategorizedModule,
     CategorizedModuleDict,

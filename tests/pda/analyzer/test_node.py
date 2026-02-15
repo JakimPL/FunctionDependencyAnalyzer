@@ -3,7 +3,7 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-from pda.nodes.python.node import ASTNode
+from pda.models.python.node import ASTNode
 
 
 class TestASTNodeWrapper:

@@ -1,15 +1,11 @@
 import ast
 from pathlib import Path
-from typing import Any, List, Union, cast
+from typing import Any, List, Union
 
 from anytree import PreOrderIter
 
-from pda.nodes.python.forest import ASTForest
-from pda.nodes.python.node import ASTNode
-from pda.specification import ImportStatement
-from pda.specification.imports.path import ImportPath
-from pda.specification.imports.scope import ImportScope
-from pda.specification.source.span import SourceSpan
+from pda.models import ASTForest, ASTNode
+from pda.specification import ImportPath, ImportScope, ImportStatement, SourceSpan
 
 
 class ImportStatementParser:
@@ -66,45 +62,17 @@ class ImportStatementParser:
 
             match current.ast:
                 case ast.If():
-                    if node.has_ancestor_of_id(current.ast.orelse):
-                        scope |= ImportScope.ELSE
-                    else:
-                        scope |= ImportScope.IF
-
-                    if self._is_type_checking_condition(cast(ASTNode[ast.If], current)):
-                        scope |= ImportScope.TYPE_CHECKING
-                    elif self._is_main_condition(cast(ASTNode[ast.If], current)):
-                        scope |= ImportScope.MAIN
-
+                    scope |= self._handle_if_scope(node, current.ast)
                 case ast.Try():
-                    if node.has_ancestor_of_id(current.ast.finalbody):
-                        scope |= ImportScope.FINALLY
-                    elif any(node.has_ancestor_of_id(handler.body) for handler in current.ast.handlers):
-                        scope |= ImportScope.EXCEPT
-                    else:
-                        scope |= ImportScope.TRY
-
+                    scope |= self._handle_try_scope(node, current.ast)
                 case ast.Match():
-                    for case in current.ast.cases:
-                        if node.has_ancestor_of_id(case.body):
-                            if isinstance(case.pattern, ast.MatchAs) and case.pattern.pattern is None:
-                                scope |= ImportScope.DEFAULT
-                            else:
-                                scope |= ImportScope.CASE
-                            break
-
+                    scope |= self._handle_match_scope(node, current.ast)
                 case ast.For() | ast.While() | ast.ListComp() | ast.SetComp() | ast.DictComp() | ast.GeneratorExp():
                     scope |= ImportScope.LOOP
-
                 case ast.With():
                     scope |= ImportScope.WITH
-
                 case ast.FunctionDef() | ast.AsyncFunctionDef():
-                    if node.has_ancestor_of_id(current.ast.decorator_list):
-                        scope |= ImportScope.DECORATOR
-                    else:
-                        scope |= ImportScope.FUNCTION
-
+                    scope |= self._handle_function_scope(node, current.ast)
                 case ast.ClassDef():
                     scope |= ImportScope.CLASS
 
@@ -113,34 +81,82 @@ class ImportStatementParser:
         scope.validate()
         return scope
 
-    def _is_type_checking_condition(self, if_node: ASTNode[ast.If]) -> bool:
-        test = if_node.ast.test
-        return self._references_type_checking(test)
+    def _handle_if_scope(self, node: ASTNode[Any], if_ast: ast.If) -> ImportScope:
+        scope = ImportScope.NONE
+        is_in_body = node.has_ancestor_of_id(if_ast.body)
+        is_in_orelse = node.has_ancestor_of_id(if_ast.orelse)
+
+        if is_in_body:
+            scope |= ImportScope.IF
+            if self._is_type_checking_condition(if_ast.test, negated=False):
+                scope |= ImportScope.TYPE_CHECKING
+            elif self._is_main_condition(if_ast.test):
+                scope |= ImportScope.MAIN
+        elif is_in_orelse:
+            scope |= ImportScope.ELSE
+            if self._is_type_checking_condition(if_ast.test, negated=True):
+                scope |= ImportScope.TYPE_CHECKING
+
+        if not is_in_body and not is_in_orelse:
+            raise ValueError("Import node is child of If but not in body or orelse")
+
+        return scope
+
+    def _handle_try_scope(self, node: ASTNode[Any], try_ast: ast.Try) -> ImportScope:
+        if try_ast.finalbody and node.has_ancestor_of_id(try_ast.finalbody):
+            return ImportScope.FINALLY
+
+        if try_ast.handlers:
+            for handler in try_ast.handlers:
+                if node.has_ancestor_of_id(handler.body):
+                    return ImportScope.EXCEPT
+
+        if try_ast.orelse and node.has_ancestor_of_id(try_ast.orelse):
+            return ImportScope.TRY_ELSE
+
+        if try_ast.body and node.has_ancestor_of_id(try_ast.body):
+            return ImportScope.TRY
+
+        raise ValueError("Import node is child of Try but not in any of its blocks")
+
+    def _handle_match_scope(self, node: ASTNode[Any], match_ast: ast.Match) -> ImportScope:
+        for case in match_ast.cases:
+            if node.has_ancestor_of_id(case.body):
+                if isinstance(case.pattern, ast.MatchAs) and case.pattern.pattern is None:
+                    return ImportScope.DEFAULT
+                return ImportScope.CASE
+        return ImportScope.NONE
+
+    def _handle_function_scope(
+        self,
+        node: ASTNode[Any],
+        func_ast: Union[ast.FunctionDef, ast.AsyncFunctionDef],
+    ) -> ImportScope:
+        scope = ImportScope.FUNCTION
+        if node.has_ancestor_of_id(func_ast.decorator_list):
+            scope |= ImportScope.DECORATOR
+
+        return scope
+
+    def _is_type_checking_condition(self, test: ast.expr, negated: bool = False) -> bool:
+        if isinstance(test, ast.UnaryOp) and isinstance(test.op, ast.Not):
+            return negated and self._references_type_checking(test.operand)
+
+        return not negated and self._references_type_checking(test)
 
     def _references_type_checking(self, node: ast.expr) -> bool:
-        if isinstance(node, ast.Name):
-            return node.id == "TYPE_CHECKING"
+        if isinstance(node, ast.Name) and node.id == "TYPE_CHECKING":
+            return True
 
-        if isinstance(node, ast.Attribute):
-            if isinstance(node.value, ast.Name):
-                return node.value.id == "typing" and node.attr == "TYPE_CHECKING"
-
-        if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not):
-            return self._references_type_checking(node.operand)
+        if isinstance(node, ast.Attribute) and node.attr == "TYPE_CHECKING":
+            return True
 
         if isinstance(node, ast.BoolOp):
             return any(self._references_type_checking(value) for value in node.values)
 
-        if isinstance(node, ast.Compare):
-            if self._references_type_checking(node.left):
-                return True
-
-            return any(self._references_type_checking(comp) for comp in node.comparators)
-
         return False
 
-    def _is_main_condition(self, if_node: ASTNode[ast.If]) -> bool:
-        test = if_node.ast.test
+    def _is_main_condition(self, test: ast.expr) -> bool:
         return self._checks_name_main(test)
 
     def _checks_name_main(self, node: ast.expr) -> bool:

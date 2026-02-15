@@ -5,7 +5,7 @@ from collections import deque
 from pathlib import Path
 from typing import Any, Deque, Dict, List, Optional, Tuple
 
-from pda.nodes import ASTNode, NodeMapping
+from pda.models import ASTNode, NodeMapping
 from pda.resolver.scope import Scope
 
 

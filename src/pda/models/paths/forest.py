@@ -3,8 +3,8 @@ from typing import Optional, Set
 
 from anytree import PostOrderIter
 
-from pda.nodes.base import BaseForest
-from pda.nodes.paths.node import PathNode
+from pda.models.paths.node import PathNode
+from pda.structures.forest.base import BaseForest
 from pda.tools.paths import is_dir, iterdir
 from pda.types import Pathlike
 
@@ -82,5 +82,6 @@ class PathForest(BaseForest[Path, Path, PathNode]):
         if node.is_python_file:
             files.add(node.filepath)
 
+        child: PathNode
         for child in node.children:
             self._collect_python_files(child, files)

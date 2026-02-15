@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
-from pda.nodes.base import BaseNode
+from pda.structures.node.base import BaseNode
 from pda.tools.paths import exists, is_dir, is_file, is_python_file
 
 
@@ -69,6 +69,7 @@ class PathNode(BaseNode[Path]):
         self._is_package = False
 
     def has_python_files_in_tree(self) -> bool:
+        child: PathNode
         for child in self.children:
             if child.is_python_file:
                 return True

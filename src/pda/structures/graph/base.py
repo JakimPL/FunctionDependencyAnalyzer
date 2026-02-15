@@ -5,8 +5,8 @@ import networkx as nx
 from networkx.classes.reportviews import NodeView, OutEdgeView
 from pyvis.network import Network
 
-from pda.graph.types import Edge, NodeT
-from pda.nodes import BaseForest
+from pda.structures.forest.base import BaseForest
+from pda.structures.graph.types import Edge, NodeT
 from pda.tools import logger
 
 

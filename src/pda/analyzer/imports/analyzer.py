@@ -12,8 +12,7 @@ from pda.analyzer.base import BaseAnalyzer
 from pda.analyzer.lazy import lazy_execution
 from pda.config import ModuleImportsAnalyzerConfig, ValidationOptions
 from pda.exceptions import PDAImportPathError, PDAMissingModuleSpecError
-from pda.graph import ModuleGraph
-from pda.nodes import ASTForest
+from pda.models import ASTForest, ModuleGraph
 from pda.specification import (
     CategorizedModule,
     CategorizedModuleDict,
@@ -26,7 +25,7 @@ from pda.specification import (
     is_namespace_package,
     validate_spec_origin,
 )
-from pda.tools import OrderedSet
+from pda.structures import OrderedSet
 from pda.tools.logger import logger
 from pda.types import Pathlike
 

@@ -3,7 +3,7 @@ from typing import Self, override
 
 import networkx as nx
 
-from pda.graph.base import Graph
+from pda.structures.graph.base import Graph
 from pda.tools.paths import is_dir
 
 

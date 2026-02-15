@@ -1,10 +1,10 @@
-from pda.analyzer import ModuleImportsAnalyzer, ModulesCollector
+from pda.analyzer import ImportStatementParser, ModuleImportsAnalyzer, ModulesCollector
 from pda.config import ModuleImportsAnalyzerConfig, ModuleScanConfig, ModulesCollectorConfig
 from pda.constants import APPLICATION_NAME
-from pda.graph import Graph, ModuleGraph, PathGraph
-from pda.nodes import ASTForest, ASTNode, PathForest, PathNode
+from pda.models import ASTForest, ASTNode, ModuleGraph, PathForest, PathGraph, PathNode
 from pda.parser import parse_python_file
 from pda.specification import ImportPath, Module, ModuleCategory, ModuleSource, SysPaths
+from pda.structures import Graph
 
 __all__ = [
     # Nodes
@@ -27,8 +27,9 @@ __all__ = [
     "Module",
     "ModuleSource",
     # Analyzers
-    "ModuleImportsAnalyzer",
     "ModulesCollector",
+    "ImportStatementParser",
+    "ModuleImportsAnalyzer",
     # Tools
     "parse_python_file",
     # Constants

@@ -2,18 +2,13 @@ import ast
 import re
 from functools import cached_property
 from pathlib import Path
-from typing import List, NamedTuple, Optional, Self, Tuple, Union
+from typing import List, Optional, Self, Tuple, Union
 
 from pydantic import Field, model_validator
 
 from pda.constants import DELIMITER
-from pda.nodes import Node, get_ast
 from pda.specification.base import Specification
-
-
-class PartsAndLevel(NamedTuple):
-    parts: List[str]
-    level: int
+from pda.specification.imports.parts import PartsAndLevel
 
 
 class ImportPath(Specification):
@@ -230,17 +225,16 @@ class ImportPath(Specification):
     @classmethod
     def from_ast(
         cls,
-        node: Optional[Union[Node[ast.Import], Node[ast.ImportFrom]]],
+        node: Optional[Union[ast.Import, ast.ImportFrom]],
     ) -> List[Self]:
         if node is None:
             return [cls()]
 
-        ast_node: Union[ast.Import, ast.ImportFrom] = get_ast(node)
-        if isinstance(ast_node, ast.Import):
-            return cls._from_ast_import(ast_node)
+        if isinstance(node, ast.Import):
+            return cls._from_ast_import(node)
 
-        if isinstance(ast_node, ast.ImportFrom):
-            return cls._from_ast_import_from(ast_node)
+        if isinstance(node, ast.ImportFrom):
+            return cls._from_ast_import_from(node)
 
         raise TypeError(f"Unsupported AST node type: {type(node)}, expected ast.Import or ast.ImportFrom")
 
