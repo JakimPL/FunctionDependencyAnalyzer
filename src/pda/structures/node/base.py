@@ -9,6 +9,7 @@ class Node(Generic[HashableT]):
     item: HashableT
     ordinal: int
     label: str
+    details: Optional[str] = None
     level: int = 0
     order: int = 0
     group: Optional[str] = None

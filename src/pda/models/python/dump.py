@@ -1,6 +1,123 @@
 import ast
 from collections.abc import Sequence
-from typing import Optional, Union
+from typing import Dict, Optional, Set, Union
+
+_AST_GROUPS: Dict[str, Set[str]] = {
+    "import": {
+        "Import",
+        "ImportFrom",
+    },
+    "definition": {
+        "FunctionDef",
+        "AsyncFunctionDef",
+        "ClassDef",
+        "Lambda",
+    },
+    "control_flow": {
+        "If",
+        "While",
+        "For",
+        "AsyncFor",
+        "Try",
+        "ExceptHandler",
+        "With",
+        "AsyncWith",
+        "Match",
+        "match_case",
+    },
+    "operator": {
+        "BinOp",
+        "UnaryOp",
+        "BoolOp",
+        "Compare",
+        "Add",
+        "Sub",
+        "Mult",
+        "MatMult",
+        "Div",
+        "FloorDiv",
+        "Mod",
+        "Pow",
+        "LShift",
+        "RShift",
+        "BitOr",
+        "BitXor",
+        "BitAnd",
+        "And",
+        "Or",
+        "Not",
+        "Eq",
+        "NotEq",
+        "Lt",
+        "LtE",
+        "Gt",
+        "GtE",
+        "Is",
+        "IsNot",
+        "In",
+        "NotIn",
+        "UAdd",
+        "USub",
+        "Invert",
+    },
+    "name": {
+        "Name",
+        "Attribute",
+        "Constant",
+        "Starred",
+    },
+    "assignment": {
+        "Assign",
+        "AugAssign",
+        "AnnAssign",
+        "NamedExpr",
+    },
+    "call": {
+        "Call",
+        "ListComp",
+        "SetComp",
+        "DictComp",
+        "GeneratorExp",
+    },
+    "data_structure": {
+        "List",
+        "Tuple",
+        "Set",
+        "Dict",
+        "Subscript",
+        "Slice",
+    },
+    "control_transfer": {
+        "Return",
+        "Yield",
+        "YieldFrom",
+        "Break",
+        "Continue",
+        "Pass",
+        "Raise",
+        "Assert",
+    },
+    "expression": {
+        "Expr",
+        "Expression",
+    },
+    "metadata": {
+        "Module",
+        "arg",
+        "keyword",
+        "alias",
+        "arguments",
+        "withitem",
+        "comprehension",
+    },
+    "declaration": {
+        "Global",
+        "Nonlocal",
+    },
+    "statement": {
+        "Delete",
+    },
+}
 
 
 def ast_dump(node: ast.AST, short: bool = True) -> str:
@@ -136,3 +253,13 @@ def ast_label(node: ast.AST) -> str:
             return f"{cls}({value})"
 
     return cls
+
+
+_AST_GROUP_MAP: Dict[str, str] = {
+    node_type: group for group, node_types in _AST_GROUPS.items() for node_type in node_types
+}
+
+
+def ast_group(node: ast.AST) -> str:
+    node_type = type(node).__name__
+    return _AST_GROUP_MAP.get(node_type, node_type.lower())

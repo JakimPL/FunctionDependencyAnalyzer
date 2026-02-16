@@ -106,7 +106,7 @@ class PyVisConverter(Generic[NodeT]):
         node_properties = self.vis_options["nodes"]
         props = {
             "label": node.label,
-            "title": node.label,
+            "title": node.details or node.label,
             "level": node.level,
             **node_properties,
         }

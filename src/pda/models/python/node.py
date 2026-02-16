@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Optional, Type
 
-from pda.models.python.dump import ast_dump, ast_label
+from pda.models.python.dump import ast_dump, ast_group, ast_label
 from pda.structures import AnyNode
 from pda.types import ASTT
 
@@ -18,12 +18,14 @@ class ASTNode(AnyNode[ASTT]):
         label: Optional[str] = None,
     ) -> None:
         label = label or ast_label(node)
-        group = type(node).__name__
+        details = ast_dump(node, short=True)
+        group = ast_group(node)
         super().__init__(
             item=node,
             parent=parent,
             ordinal=self._ordinal(),
             label=label,
+            details=details,
             group=group,
         )
 

@@ -5,7 +5,7 @@ from pda.models.paths.forest import PathForest
 from pda.models.paths.graph import PathGraph
 from pda.models.paths.node import PathNode
 from pda.models.python.builder import build_ast_tree
-from pda.models.python.dump import ast_dump, ast_label
+from pda.models.python.dump import ast_dump, ast_group, ast_label
 from pda.models.python.forest import ASTForest
 from pda.models.python.graph import ASTGraph
 from pda.models.python.node import ASTNode
@@ -19,6 +19,7 @@ __all__ = [
     "NodeMapping",
     "ast_dump",
     "ast_label",
+    "ast_group",
     "get_ast",
     "build_ast_tree",
     # Path-related structures

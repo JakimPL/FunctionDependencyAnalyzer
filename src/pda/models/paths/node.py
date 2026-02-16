@@ -22,12 +22,14 @@ class PathNode(AnyNode[Path]):
 
         ordinal = filepath.stat().st_ino
         label = label or filepath.name
+        details = str(filepath)
         level = len(filepath.parts)
         super().__init__(
             item=filepath,
             parent=parent,
             ordinal=ordinal,
             label=label,
+            details=details,
             level=level,
             group=group,
         )
