@@ -1,5 +1,7 @@
 import ast
-from typing import Any, Optional, cast
+from typing import Any, Optional
+
+from pda.analyzer.imports.special.common import get_next_elif, is_and_clause, is_or_clause
 
 
 def is_type_checking_only(if_node: ast.If, in_else_branch: bool = False) -> bool:
@@ -14,10 +16,10 @@ def is_type_checking_only(if_node: ast.If, in_else_branch: bool = False) -> bool
     if _is_simplified_to_true_with_type_checking(test):
         return True
 
-    if _is_and_clause(test):
-        return contains_type_checking_in_and(test)
+    if is_and_clause(test):
+        return _contains_type_checking_in_and(test)
 
-    if _is_or_clause(test):
+    if is_or_clause(test):
         return False
 
     return False
@@ -29,7 +31,8 @@ def any_branch_excludes_type_checking(if_node: ast.If) -> bool:
     while current:
         if contains_type_checking_negation(current.test):
             return True
-        current = _get_next_elif(current)
+
+        current = get_next_elif(current)
 
     return False
 
@@ -136,12 +139,14 @@ def _contains_type_checking_in_and_chain(node: ast.BoolOp) -> bool:
     for value in node.values:
         if is_type_checking_name(value):
             return True
+
         if isinstance(value, ast.Compare) and _is_simplified_type_checking_comparison(value):
             return True
+
     return False
 
 
-def contains_type_checking_in_and(node: ast.expr) -> bool:
+def _contains_type_checking_in_and(node: ast.expr) -> bool:
     if is_type_checking_name(node):
         return True
 
@@ -154,11 +159,6 @@ def contains_type_checking_in_and(node: ast.expr) -> bool:
     return False
 
 
-def can_simplify_to_true(node: ast.expr) -> bool:
-    result = simplify_comparison(node)
-    return result is True
-
-
 def _is_negated_type_checking(node: ast.expr) -> bool:
     return isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not) and is_type_checking_name(node.operand)
 
@@ -167,28 +167,10 @@ def _contains_negated_type_checking_in_or_chain(node: ast.BoolOp) -> bool:
     for value in node.values:
         if _is_negated_type_checking(value):
             return True
+
     return False
-
-
-def _is_elif_branch(orelse: list[ast.stmt]) -> bool:
-    return len(orelse) == 1 and isinstance(orelse[0], ast.If)
-
-
-def _get_next_elif(current: ast.If) -> Optional[ast.If]:
-    if current.orelse and _is_elif_branch(current.orelse):
-        return cast(ast.If, current.orelse[0])
-
-    return None
-
-
-def _is_or_clause(node: ast.expr) -> bool:
-    return isinstance(node, ast.BoolOp) and isinstance(node.op, ast.Or)
-
-
-def _is_and_clause(node: ast.expr) -> bool:
-    return isinstance(node, ast.BoolOp) and isinstance(node.op, ast.And)
 
 
 def _is_simplified_to_true_with_type_checking(node: ast.expr) -> bool:
     simplified = simplify_comparison(node)
-    return simplified is True and contains_type_checking_in_and(node)
+    return simplified is True and _contains_type_checking_in_and(node)
