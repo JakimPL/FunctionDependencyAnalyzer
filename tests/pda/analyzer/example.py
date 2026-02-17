@@ -6,11 +6,17 @@ and analyzed by the tool, including imports in different scopes and conditional 
 
 from typing import TYPE_CHECKING, Any, Callable
 
+from package.conditions import another_condition, some_condition
 from package.module.submodule import *
 from package.module.submodule import function as imported_function
 
 if TYPE_CHECKING:
     from package.module import SomeType
+
+    if some_condition:
+        from package.module import SomeOtherType
+    else:
+        from package.module import SomeFallbackType as SomeOtherType
 
 if not TYPE_CHECKING:
     from package.module import SomeRuntimeClass
@@ -25,6 +31,12 @@ else:
 try:
     import some_optional_dependency
     from some_optional_dependency.module import OptionalClass
+
+    try:
+        from nested_try_package.nested_module import NestedTryClass
+    except NameError:
+        from nested_try_package.fallback_module import NestedTryClass
+
 except ImportError:
     import alternative_dependency as some_optional_dependency
     from alternative_dependency.module import AlternativeClass as OptionalClass
@@ -70,6 +82,14 @@ def regular_function(instance: Any) -> Any:
     import regular_import
     from regular_import import RegularClass
 
+    match another_condition:
+        case "case1":
+            from case1_package import Case1Class
+        case "case2":
+            from case2_package import Case2Class
+        case _:
+            from default_case_package import DefaultCaseClass
+
     instance = SomeRuntimeClass()
     value = some_optional_dependency.CONSTANT
     result = RegularClass(instance, value)
@@ -109,6 +129,7 @@ class MyClass:
 
     @decorator
     def decorated_method(self) -> Any:
+        import inside_decorated_method
         from inside_decorated_method import InsideDecoratedMethodClass, context_manager
 
         with context_manager():

@@ -5,6 +5,7 @@ from typing import Any, List, Union
 from anytree import PreOrderIter
 
 from pda.models import ASTForest, ASTNode
+from pda.models.python.dump import ast_dump
 from pda.specification import ImportPath, ImportScope, ImportStatement, SourceSpan
 
 
@@ -39,20 +40,20 @@ class ImportStatementParser:
     ) -> List[ImportStatement]:
         import_paths = ImportPath.from_ast(import_node.ast)
         span = SourceSpan.from_ast(import_node.ast)
-        scope = self._determine_scope(import_node)
+        scopes = self._determine_scopes(import_node)
 
         return [
             ImportStatement(
                 origin=origin,
                 span=span,
                 path=import_path,
-                scope=scope,
+                scopes=scopes,
             )
             for import_path in import_paths
         ]
 
-    def _determine_scope(self, node: ASTNode[Any]) -> ImportScope:
-        scope = ImportScope.NONE
+    def _determine_scopes(self, node: ASTNode[Any]) -> List[ImportScope]:
+        scopes: List[ImportScope] = []
         current = node.parent
 
         while current is not None:
@@ -60,117 +61,109 @@ class ImportStatementParser:
                 current = current.parent
                 continue
 
+            scope = ImportScope.NONE
             match current.ast:
                 case ast.If():
-                    scope |= self._handle_if_scope(node, current.ast)
+                    scope = self._handle_if_scope(node, current)
                 case ast.Try():
-                    scope |= self._handle_try_scope(node, current.ast)
+                    scope = self._handle_try_scope(node, current)
                 case ast.Match():
-                    scope |= self._handle_match_scope(node, current.ast)
+                    scope = self._handle_match_scope(node, current)
                 case ast.For() | ast.While() | ast.ListComp() | ast.SetComp() | ast.DictComp() | ast.GeneratorExp():
-                    scope |= ImportScope.LOOP
+                    scope = ImportScope.LOOP
                 case ast.With():
-                    scope |= ImportScope.WITH
+                    scope = ImportScope.WITH
                 case ast.FunctionDef() | ast.AsyncFunctionDef():
-                    scope |= self._handle_function_scope(node, current.ast)
+                    scope = ImportScope.FUNCTION
                 case ast.ClassDef():
-                    scope |= ImportScope.CLASS
+                    scope = ImportScope.CLASS
+
+            if scope:
+                scope.validate()
+                scopes.append(scope)
 
             current = current.parent
 
-        scope.validate()
-        return scope
+        return scopes
 
-    def _handle_if_scope(self, node: ASTNode[Any], if_ast: ast.If) -> ImportScope:
-        scope = ImportScope.NONE
-        is_in_body = node.has_ancestor_of_id(if_ast.body)
-        is_in_orelse = node.has_ancestor_of_id(if_ast.orelse)
-
-        if is_in_body:
-            scope |= ImportScope.IF
-            if self._is_type_checking_condition(if_ast.test, negated=False):
-                scope |= ImportScope.TYPE_CHECKING
-            elif self._is_main_condition(if_ast.test):
-                scope |= ImportScope.MAIN
-        elif is_in_orelse:
-            scope |= ImportScope.ELSE
-            if self._is_type_checking_condition(if_ast.test, negated=True):
-                scope |= ImportScope.TYPE_CHECKING
-
-        if not is_in_body and not is_in_orelse:
-            raise ValueError("Import node is child of If but not in body or orelse")
-
-        return scope
-
-    def _handle_try_scope(self, node: ASTNode[Any], try_ast: ast.Try) -> ImportScope:
-        if try_ast.finalbody and node.has_ancestor_of_id(try_ast.finalbody):
-            return ImportScope.FINALLY
-
-        if try_ast.handlers:
-            for handler in try_ast.handlers:
-                if node.has_ancestor_of_id(handler.body):
-                    return ImportScope.EXCEPT
-
-        if try_ast.orelse and node.has_ancestor_of_id(try_ast.orelse):
-            return ImportScope.TRY_ELSE
-
-        if try_ast.body and node.has_ancestor_of_id(try_ast.body):
-            return ImportScope.TRY
-
-        raise ValueError("Import node is child of Try but not in any of its blocks")
-
-    def _handle_match_scope(self, node: ASTNode[Any], match_ast: ast.Match) -> ImportScope:
-        for case in match_ast.cases:
-            if node.has_ancestor_of_id(case.body):
-                if isinstance(case.pattern, ast.MatchAs) and case.pattern.pattern is None:
-                    return ImportScope.DEFAULT
-                return ImportScope.CASE
-        return ImportScope.NONE
-
-    def _handle_function_scope(
+    def _handle_if_scope(
         self,
         node: ASTNode[Any],
-        func_ast: Union[ast.FunctionDef, ast.AsyncFunctionDef],
+        if_node: ASTNode[ast.If],
     ) -> ImportScope:
-        scope = ImportScope.FUNCTION
-        if node.has_ancestor_of_id(func_ast.decorator_list):
-            scope |= ImportScope.DECORATOR
+        def is_ancestor_in_body(parent: ASTNode[Any]) -> bool:
+            return parent.ast in if_node.ast.body
 
-        return scope
+        def is_ancestor_in_orelse(parent: ASTNode[Any]) -> bool:
+            return parent.ast in if_node.ast.orelse
 
-    def _is_type_checking_condition(self, test: ast.expr, negated: bool = False) -> bool:
-        if isinstance(test, ast.UnaryOp) and isinstance(test.op, ast.Not):
-            return negated and self._references_type_checking(test.operand)
+        node_in_body = node.has_ancestor(is_ancestor_in_body, include_self=True)
+        node_in_orelse = node.has_ancestor(is_ancestor_in_orelse, include_self=True)
 
-        return not negated and self._references_type_checking(test)
-
-    def _references_type_checking(self, node: ast.expr) -> bool:
-        if isinstance(node, ast.Name) and node.id == "TYPE_CHECKING":
-            return True
-
-        if isinstance(node, ast.Attribute) and node.attr == "TYPE_CHECKING":
-            return True
-
-        if isinstance(node, ast.BoolOp):
-            return any(self._references_type_checking(value) for value in node.values)
-
-        return False
-
-    def _is_main_condition(self, test: ast.expr) -> bool:
-        return self._checks_name_main(test)
-
-    def _checks_name_main(self, node: ast.expr) -> bool:
-        if isinstance(node, ast.Compare):
-            left_is_name = isinstance(node.left, ast.Name) and node.left.id == "__name__"
-            right_is_main = any(
-                isinstance(comp, ast.Constant) and comp.value == "__main__" for comp in node.comparators
+        if node_in_body and node_in_orelse:
+            raise ValueError(
+                f"Import node {ast_dump(node.ast)} is child of If {ast_dump(if_node.ast)} and in both body and orelse"
             )
-            return left_is_name and right_is_main
 
-        if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not):
-            return self._checks_name_main(node.operand)
+        if not node_in_body and not node_in_orelse:
+            raise ValueError(
+                f"Import node {ast_dump(node.ast)} is child of If {ast_dump(if_node.ast)} but not in its body or orelse"
+            )
 
-        if isinstance(node, ast.BoolOp):
-            return any(self._checks_name_main(value) for value in node.values)
+        return ImportScope.IF if node_in_body else ImportScope.ELSE
 
-        return False
+    def _handle_try_scope(self, node: ASTNode[Any], try_node: ASTNode[ast.Try]) -> ImportScope:
+        except_handlers = try_node.ast.handlers
+
+        def is_ancestor_in_body(parent: ASTNode[Any]) -> bool:
+            return parent.ast in try_node.ast.body
+
+        def is_ancestor_in_orelse(parent: ASTNode[Any]) -> bool:
+            return parent.ast in try_node.ast.orelse
+
+        def is_ancestor_in_except_handlers(parent: ASTNode[Any]) -> bool:
+            return any(parent.ast in except_handler.body for except_handler in except_handlers)
+
+        def is_ancestor_in_finally(parent: ASTNode[Any]) -> bool:
+            return parent.ast in try_node.ast.finalbody
+
+        node_in_body = node.has_ancestor(is_ancestor_in_body, include_self=True)
+        node_in_orelse = node.has_ancestor(is_ancestor_in_orelse, include_self=True)
+        node_in_except_handlers = node.has_ancestor(is_ancestor_in_except_handlers, include_self=True)
+        node_in_finally = node.has_ancestor(is_ancestor_in_finally, include_self=True)
+
+        flags = {
+            node_in_body: ImportScope.TRY,
+            node_in_orelse: ImportScope.TRY_ELSE,
+            node_in_except_handlers: ImportScope.EXCEPT,
+            node_in_finally: ImportScope.FINALLY,
+        }
+
+        if sum(flags) > 1:
+            raise ValueError(
+                f"Import node {ast_dump(node.ast)} is child of Try {ast_dump(try_node.ast)} and in multiple scopes"
+            )
+
+        if not any(flags):
+            raise ValueError(
+                f"Import node {ast_dump(node.ast)} is child of Try {ast_dump(try_node.ast)} "
+                "but not in any of its scopes"
+            )
+
+        return next(scope for in_scope, scope in flags.items() if in_scope)
+
+    def _handle_match_scope(self, node: ASTNode[Any], match_node: ASTNode[ast.Match]) -> ImportScope:
+        def is_ancestor_in_case_body(parent: ASTNode[Any], *, case: ast.match_case) -> bool:
+            return parent.ast in case.body
+
+        match_cases = match_node.ast.cases
+        for case in match_cases:
+
+            if node.has_ancestor(is_ancestor_in_case_body, include_self=True, case=case):
+                scope = ImportScope.CASE
+                if isinstance(case.pattern, ast.MatchAs) and case.pattern.pattern is None:
+                    scope |= ImportScope.DEFAULT
+
+                return scope
+
+        raise ValueError("Import node is child of Match but not in any of its cases")

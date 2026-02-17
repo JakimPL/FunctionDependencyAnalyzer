@@ -1,5 +1,5 @@
 from pda.types.nested_defaultdict import NestedDefaultDict, nested_defaultdict
-from pda.types.typehints import ASTT, AnyT, AnyT_co, HashableT, PathInput, Pathlike
+from pda.types.typehints import ASTT, AnyT, AnyT_co, HashableT, HashableT_co, PathInput, Pathlike
 
 __all__ = [
     "AnyT",
@@ -8,6 +8,7 @@ __all__ = [
     "Pathlike",
     "PathInput",
     "HashableT",
+    "HashableT_co",
     "NestedDefaultDict",
     "nested_defaultdict",
 ]

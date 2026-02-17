@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import List
 
 from pydantic import Field
 
@@ -15,7 +16,7 @@ class ImportStatement(Specification):
         ...,
         description="The import path, e.g. 'package.module' or 'package.module:ClassName'",
     )
-    scope: ImportScope = Field(
-        ImportScope.NONE,
-        description="Scope in which this import is executed",
+    scopes: List[ImportScope] = Field(
+        default_factory=list,
+        description="Scope in which this import is executed, from innermost to outermost",
     )

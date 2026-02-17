@@ -31,4 +31,4 @@ lib/
 
 *.ipynb
 
-!options/pyvis.json
+!config/**/*.json

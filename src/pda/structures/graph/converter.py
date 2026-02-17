@@ -32,7 +32,7 @@ class PyVisConverter(Generic[NodeT]):
         )
 
     def __call__(self, graph: Graph[NodeT]) -> Network:
-        graph.sort()
+        # graph.sort()
         nodes = sorted(graph.nodes)
         options = self._prepare_vis_options(nodes)
 
@@ -83,6 +83,10 @@ class PyVisConverter(Generic[NodeT]):
     @property
     def auto_adjust_spacing(self) -> bool:
         return self.config.pda.auto_adjust_spacing
+
+    @property
+    def ratio(self) -> float:
+        return self.config.pda.ratio
 
     def _prepare_vis_options(self, nodes: List[NodeT]) -> Dict[str, Dict[str, Any]]:
         options: Dict[str, Dict[str, Any]] = deepcopy(self.vis_options)
@@ -152,8 +156,10 @@ class PyVisConverter(Generic[NodeT]):
         max_width = max(nodes_per_level.values(), default=1)
         depth = max_level + 1
 
+        ratio = self.ratio
+        ratio = 1.0 / ratio if self.vis_options["layout"]["hierarchical"]["direction"] in ("LR", "RL") else ratio
         estimated_width = max_width * base_node_spacing
-        target_height = estimated_width * (9 / 16)
+        target_height = estimated_width * ratio
 
         if depth > 1:
             level_separation = max(base_node_spacing, int(target_height / depth))

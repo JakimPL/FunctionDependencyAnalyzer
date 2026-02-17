@@ -25,7 +25,7 @@ class PyVisConfig(BaseConfig):
 
     @classmethod
     def default_path(cls) -> Path:
-        return Path(__file__).parent.parent.parent.parent.parent / "options" / "pyvis.json"
+        return Path(__file__).parent.parent.parent.parent.parent / "config" / "pyvis.json"
 
     @classmethod
     def default(cls) -> Self:

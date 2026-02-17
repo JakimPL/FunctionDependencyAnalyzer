@@ -1,5 +1,4 @@
 from enum import IntFlag, auto
-from typing import List
 
 
 class ImportScope(IntFlag):
@@ -23,7 +22,7 @@ class ImportScope(IntFlag):
     # Definitions
     CLASS = auto()  # inside class def
     FUNCTION = auto()  # inside function def body
-    DECORATOR = auto()
+    DECORATOR = auto()  # inside a function
 
     # Special scopes
     TYPE_CHECKING = auto()  # `if TYPE_CHECKING` and variants
@@ -48,26 +47,3 @@ class ImportScope(IntFlag):
 
         if self & ImportScope.DECORATOR and not self & ImportScope.FUNCTION:
             raise ValueError("DECORATOR flag must be combined with FUNCTION")
-
-    def __repr__(self) -> str:
-        if self == ImportScope.NONE:
-            return "NONE"
-
-        composite_flags = {
-            ImportScope.IF_ELSE,
-            ImportScope.ERROR_HANDLING,
-            ImportScope.MATCH_CASE,
-            ImportScope.BRANCH,
-            ImportScope.DEFINITION,
-        }
-
-        flags: List[str] = [
-            name
-            for flag in ImportScope
-            if (self & flag)
-            and flag != ImportScope.NONE
-            and flag not in composite_flags
-            and (name := flag.name) is not None
-        ]
-
-        return " | ".join(sorted(flags))

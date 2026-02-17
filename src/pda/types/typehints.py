@@ -11,3 +11,4 @@ ASTT = TypeVar("ASTT", bound=ast.AST)
 Pathlike: TypeAlias = Union[str, Path]
 PathInput: TypeAlias = Union[Pathlike, Iterable[Pathlike]]
 HashableT = TypeVar("HashableT", bound=Hashable)
+HashableT_co = TypeVar("HashableT_co", bound=Hashable, covariant=True)
