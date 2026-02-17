@@ -4,7 +4,7 @@ from typing import Tuple
 
 import pytest
 
-from pda.analyzer.imports.type_checking import is_type_checking_only
+from pda.analyzer.imports.special.type_checking import is_type_checking_only
 
 
 class TestIfTypeChecking:
@@ -13,55 +13,55 @@ class TestIfTypeChecking:
         __test__ = False
 
         label: str
-        expected_type_checking: Tuple[bool, ...]
+        expected: Tuple[bool, ...]
         code: str
 
     test_cases = [
         TestCase(
             label="direct_type_checking",
-            expected_type_checking=(True,),
+            expected=(True,),
             code="""
 if TYPE_CHECKING:
-    from package.module import SomeType
+    pass
             """,
         ),
         TestCase(
             label="direct_not_type_checking",
-            expected_type_checking=(False,),
+            expected=(False,),
             code="""
 if not TYPE_CHECKING:
-    from package.module import SomeType
+    pass
             """,
         ),
         TestCase(
             label="and_clause",
-            expected_type_checking=(True,),
+            expected=(True,),
             code="""
 if True and TYPE_CHECKING == True:
-    from package.module import SomeTypeOnlyUsedInTypeChecking1
+    pass
             """,
         ),
         TestCase(
             label="complex_and_clause",
-            expected_type_checking=(True, True),
+            expected=(True, True),
             code="""
 if 1 > 0 and TYPE_CHECKING is True and some_condition:
-    from package.module import SomeTypeOnlyUsedInTypeChecking2
+    pass
 elif TYPE_CHECKING:
-    from package.module import SomeTypeOnlyUsedInTypeChecking3
+    pass
 """,
         ),
         TestCase(
             label="bool_cast",
-            expected_type_checking=(True,),
+            expected=(True,),
             code="""
 if bool(TYPE_CHECKING) > 0:
-    from package.module import SomeTypeOnlyUsedInTypeChecking4
+    pass
 """,
         ),
         TestCase(
             label="elif_with_or",
-            expected_type_checking=(
+            expected=(
                 False,
                 False,
                 True,
@@ -72,49 +72,49 @@ if some_condition:
 elif not TYPE_CHECKING or another_condition:
     pass
 else:
-    from package.module import SomeTypeOnlyUsedInTypeChecking6
+    pass
 """,
         ),
         TestCase(
             label="or_with_type_checking",
-            expected_type_checking=(False,),
+            expected=(False,),
             code="""
 if some_condition or TYPE_CHECKING:
-    from package.module import SomeTypeUsedInRuntime1
+    pass
 """,
         ),
         TestCase(
             label="or_with_type_checking_in_and",
-            expected_type_checking=(False,),
+            expected=(False,),
             code="""
 if False or TYPE_CHECKING:  # We won't evaluate conditions, so we a priori consider the import as used in runtime
-    from package.module import SomeTypeUsedInRuntime2
+    pass
 """,
         ),
         TestCase(
             label="complex_condition_with_type_checking",
-            expected_type_checking=(False,),
+            expected=(False,),
             code="""
 if some_condition or (TYPE_CHECKING and another_condition):
-    from package.module import SomeTypeUsedInRuntime3
+    pass
 """,
         ),
         TestCase(
             label="not_type_checking_in_if",
-            expected_type_checking=(
+            expected=(
                 False,
                 False,
             ),
             code="""
 if not TYPE_CHECKING and some_condition:
-    from package.module import SomeTypeUsedInRuntime4
+    pass
 else:
-    from package.module import SomeTypeUsedInRuntime5
+    pass
 """,
         ),
         TestCase(
             label="type_checking_in_if_and_elif",
-            expected_type_checking=(
+            expected=(
                 False,
                 False,
                 False,
@@ -123,9 +123,9 @@ else:
 if TYPE_CHECKING or some_condition:
     pass
 elif another_condition:
-    from package.module import SomeTypeUsedInRuntime6
+    pass
 else:
-    from package.module import SomeTypeUsedInRuntime7
+    pass
 """,
         ),
     ]
@@ -156,6 +156,4 @@ else:
             else:
                 break
 
-        assert (
-            tuple(results) == test_case.expected_type_checking
-        ), f"Expected: {test_case.expected_type_checking}, got: {tuple(results)}"
+        assert tuple(results) == test_case.expected, f"Expected: {test_case.expected}, got: {tuple(results)}"

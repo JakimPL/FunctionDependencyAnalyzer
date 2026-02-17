@@ -2,6 +2,65 @@ import ast
 from typing import Any, Optional, cast
 
 
+def is_type_checking_only(if_node: ast.If, in_else_branch: bool = False) -> bool:
+    if in_else_branch:
+        return any_branch_excludes_type_checking(if_node)
+
+    test = if_node.test
+
+    if is_type_checking_name(test):
+        return True
+
+    if _is_simplified_to_true_with_type_checking(test):
+        return True
+
+    if _is_and_clause(test):
+        return contains_type_checking_in_and(test)
+
+    if _is_or_clause(test):
+        return False
+
+    return False
+
+
+def any_branch_excludes_type_checking(if_node: ast.If) -> bool:
+    current: Optional[ast.If] = if_node
+
+    while current:
+        if contains_type_checking_negation(current.test):
+            return True
+        current = _get_next_elif(current)
+
+    return False
+
+
+def contains_type_checking_negation(node: ast.expr) -> bool:
+    if _is_negated_type_checking(node):
+        return True
+
+    if isinstance(node, ast.BoolOp) and isinstance(node.op, ast.Or):
+        return _contains_negated_type_checking_in_or_chain(node)
+
+    return False
+
+
+def simplify_comparison(node: ast.expr) -> Optional[bool]:
+    if isinstance(node, ast.Constant):
+        return bool(node.value)
+
+    if isinstance(node, ast.Compare):
+        if is_type_checking_reference(node.left) and len(node.ops) == 1 and len(node.comparators) == 1:
+            return _simplify_type_checking_comparison(node.ops[0], node.comparators[0])
+
+        if isinstance(node.left, ast.Constant) and len(node.ops) == 1 and isinstance(node.comparators[0], ast.Constant):
+            return _evaluate_constant_comparison(node.left.value, node.ops[0], node.comparators[0].value)
+
+    if is_bool_type_checking_call(node):
+        return True
+
+    return None
+
+
 def is_type_checking_name(node: ast.expr) -> bool:
     return isinstance(node, ast.Name) and node.id == "TYPE_CHECKING"
 
@@ -68,23 +127,6 @@ def _evaluate_constant_comparison(left_val: Any, op: ast.cmpop, right_val: Any) 
     return comparison
 
 
-def simplify_comparison(node: ast.expr) -> Optional[bool]:
-    if isinstance(node, ast.Constant):
-        return bool(node.value)
-
-    if isinstance(node, ast.Compare):
-        if is_type_checking_reference(node.left) and len(node.ops) == 1 and len(node.comparators) == 1:
-            return _simplify_type_checking_comparison(node.ops[0], node.comparators[0])
-
-        if isinstance(node.left, ast.Constant) and len(node.ops) == 1 and isinstance(node.comparators[0], ast.Constant):
-            return _evaluate_constant_comparison(node.left.value, node.ops[0], node.comparators[0].value)
-
-    if is_bool_type_checking_call(node):
-        return True
-
-    return None
-
-
 def _is_simplified_type_checking_comparison(node: ast.Compare) -> bool:
     result = simplify_comparison(node)
     return result is True and is_type_checking_reference(node.left)
@@ -128,16 +170,6 @@ def _contains_negated_type_checking_in_or_chain(node: ast.BoolOp) -> bool:
     return False
 
 
-def contains_type_checking_negation(node: ast.expr) -> bool:
-    if _is_negated_type_checking(node):
-        return True
-
-    if isinstance(node, ast.BoolOp) and isinstance(node.op, ast.Or):
-        return _contains_negated_type_checking_in_or_chain(node)
-
-    return False
-
-
 def _is_elif_branch(orelse: list[ast.stmt]) -> bool:
     return len(orelse) == 1 and isinstance(orelse[0], ast.If)
 
@@ -147,17 +179,6 @@ def _get_next_elif(current: ast.If) -> Optional[ast.If]:
         return cast(ast.If, current.orelse[0])
 
     return None
-
-
-def any_branch_excludes_type_checking(if_node: ast.If) -> bool:
-    current: Optional[ast.If] = if_node
-
-    while current:
-        if contains_type_checking_negation(current.test):
-            return True
-        current = _get_next_elif(current)
-
-    return False
 
 
 def _is_or_clause(node: ast.expr) -> bool:
@@ -171,24 +192,3 @@ def _is_and_clause(node: ast.expr) -> bool:
 def _is_simplified_to_true_with_type_checking(node: ast.expr) -> bool:
     simplified = simplify_comparison(node)
     return simplified is True and contains_type_checking_in_and(node)
-
-
-def is_type_checking_only(if_node: ast.If, in_else_branch: bool = False) -> bool:
-    if in_else_branch:
-        return any_branch_excludes_type_checking(if_node)
-
-    test = if_node.test
-
-    if is_type_checking_name(test):
-        return True
-
-    if _is_simplified_to_true_with_type_checking(test):
-        return True
-
-    if _is_and_clause(test):
-        return contains_type_checking_in_and(test)
-
-    if _is_or_clause(test):
-        return False
-
-    return False

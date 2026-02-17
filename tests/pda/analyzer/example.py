@@ -186,7 +186,7 @@ if __name__ == "__main__":
 
     main_guard_function()
 
-if some_condition and __name__ == "__main__":
+if some_condition and "__main__" == __name__:
     from main_guard_package import some_function
 
     some_function()

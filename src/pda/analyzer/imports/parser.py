@@ -4,6 +4,7 @@ from typing import Any, List, Union
 
 from anytree import PreOrderIter
 
+from pda.analyzer.imports.special.type_checking import is_type_checking_only
 from pda.models import ASTForest, ASTNode
 from pda.models.python.dump import ast_dump
 from pda.specification import ImportPath, ImportScope, ImportStatement, SourceSpan
@@ -65,7 +66,7 @@ class ImportStatementParser:
             match current.ast:
                 case ast.If():
                     scope = self._handle_if_scope(node, current)
-                    scope |= self._handle_type_checking_scope(current)
+                    scope |= self._handle_type_checking_scope(node, current)
                 case ast.Try():
                     scope = self._handle_try_scope(node, current)
                 case ast.Match():
@@ -113,7 +114,15 @@ class ImportStatementParser:
 
         return ImportScope.IF if node_in_body else ImportScope.ELSE
 
-    def _handle_type_checking_scope(self, if_node: ASTNode[ast.If]) -> ImportScope:
+    def _handle_type_checking_scope(self, node: ASTNode[Any], if_node: ASTNode[ast.If]) -> ImportScope:
+        def is_ancestor_in_orelse(parent: ASTNode[Any]) -> bool:
+            return parent.ast in if_node.ast.orelse
+
+        in_else_branch = node.has_ancestor(is_ancestor_in_orelse, include_self=True)
+
+        if is_type_checking_only(if_node.ast, in_else_branch=in_else_branch):
+            return ImportScope.TYPE_CHECKING
+
         return ImportScope.NONE
 
     def _handle_try_scope(self, node: ASTNode[Any], try_node: ASTNode[ast.Try]) -> ImportScope:
