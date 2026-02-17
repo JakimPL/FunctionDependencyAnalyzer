@@ -1,128 +1,110 @@
 import ast
-from typing import Optional
+from typing import Any, Optional
+
+
+def is_type_checking_name(node: ast.expr) -> bool:
+    return isinstance(node, ast.Name) and node.id == "TYPE_CHECKING"
+
+
+def is_bool_type_checking_call(node: ast.expr) -> bool:
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "bool"
+        and len(node.args) == 1
+        and is_type_checking_name(node.args[0])
+    )
+
+
+def is_type_checking_reference(node: ast.expr) -> bool:
+    return is_type_checking_name(node) or is_bool_type_checking_call(node)
+
+
+def _simplify_type_checking_comparison(op: ast.cmpop, comparator: ast.expr) -> Optional[bool]:
+    if not isinstance(comparator, ast.Constant):
+        return None
+
+    if isinstance(op, (ast.Eq, ast.Is)):
+        if comparator.value is True:
+            return True
+        if comparator.value is False:
+            return False
+
+    if isinstance(op, (ast.NotEq, ast.IsNot)):
+        if comparator.value is False:
+            return True
+        if comparator.value is True:
+            return False
+
+    if isinstance(op, ast.Gt) and comparator.value == 0:
+        return True
+
+    if isinstance(op, ast.Lt) and comparator.value == 1:
+        return False
+
+    return None
+
+
+def _evaluate_constant_comparison(left_val: Any, op: ast.cmpop, right_val: Any) -> Optional[bool]:
+    comparison: Optional[bool] = None
+    try:
+        match op:
+            case ast.Gt():
+                comparison = left_val > right_val
+            case ast.Lt():
+                comparison = left_val < right_val
+            case ast.Eq():
+                comparison = left_val == right_val
+            case ast.NotEq():
+                comparison = left_val != right_val
+            case ast.GtE():
+                comparison = left_val >= right_val
+            case ast.LtE():
+                comparison = left_val <= right_val
+
+    except TypeError:
+        return None
+
+    return comparison
 
 
 def simplify_comparison(node: ast.expr) -> Optional[bool]:
-    """
-    Simplify common comparison patterns to True/False/None.
-    Returns None if we can't determine the value.
-    """
     if isinstance(node, ast.Constant):
         return bool(node.value)
 
     if isinstance(node, ast.Compare):
-        is_type_checking_left = isinstance(node.left, ast.Name) and node.left.id == "TYPE_CHECKING"
+        if is_type_checking_reference(node.left) and len(node.ops) == 1 and len(node.comparators) == 1:
+            return _simplify_type_checking_comparison(node.ops[0], node.comparators[0])
 
-        is_bool_type_checking = (
-            isinstance(node.left, ast.Call)
-            and isinstance(node.left.func, ast.Name)
-            and node.left.func.id == "bool"
-            and len(node.left.args) == 1
-            and isinstance(node.left.args[0], ast.Name)
-            and node.left.args[0].id == "TYPE_CHECKING"
-        )
+        if isinstance(node.left, ast.Constant) and len(node.ops) == 1 and isinstance(node.comparators[0], ast.Constant):
+            return _evaluate_constant_comparison(node.left.value, node.ops[0], node.comparators[0].value)
 
-        if (is_type_checking_left or is_bool_type_checking) and len(node.ops) == 1 and len(node.comparators) == 1:
-            op = node.ops[0]
-            comparator = node.comparators[0]
-
-            if isinstance(op, (ast.Eq, ast.Is)):
-                if isinstance(comparator, ast.Constant) and comparator.value is True:
-                    return True
-                if isinstance(comparator, ast.Constant) and comparator.value is False:
-                    return False
-
-            if isinstance(op, (ast.NotEq, ast.IsNot)):
-                if isinstance(comparator, ast.Constant) and comparator.value is False:
-                    return True
-                if isinstance(comparator, ast.Constant) and comparator.value is True:
-                    return False
-
-            if isinstance(op, ast.Gt):
-                if isinstance(comparator, ast.Constant) and comparator.value == 0:
-                    return True
-
-            if isinstance(op, ast.Lt):
-                if isinstance(comparator, ast.Constant) and comparator.value == 1:
-                    return False
-
-        if isinstance(node.left, ast.Constant) and len(node.ops) == 1:
-            left_val = node.left.value
-            comparator = node.comparators[0]
-            if isinstance(comparator, ast.Constant):
-                right_val = comparator.value
-                op = node.ops[0]
-
-                try:
-                    if isinstance(op, ast.Gt):
-                        return left_val > right_val
-                    elif isinstance(op, ast.Lt):
-                        return left_val < right_val
-                    elif isinstance(op, ast.Eq):
-                        return left_val == right_val
-                    elif isinstance(op, ast.NotEq):
-                        return left_val != right_val
-                    elif isinstance(op, ast.GtE):
-                        return left_val >= right_val
-                    elif isinstance(op, ast.LtE):
-                        return left_val <= right_val
-                except TypeError:
-                    return None
-
-    if isinstance(node, ast.Call):
-        if isinstance(node.func, ast.Name) and node.func.id == "bool":
-            if len(node.args) == 1 and isinstance(node.args[0], ast.Name):
-                if node.args[0].id == "TYPE_CHECKING":
-                    return True
-
-    if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not):
-        inner = simplify_comparison(node.operand)
-        if inner is not None:
-            return not inner
+    if is_bool_type_checking_call(node):
+        return True
 
     return None
 
 
 def contains_type_checking_in_and(node: ast.expr) -> bool:
-    if isinstance(node, ast.Name) and node.id == "TYPE_CHECKING":
+    if is_type_checking_name(node):
         return True
 
     if isinstance(node, ast.Compare):
         result = simplify_comparison(node)
         if result is True:
-            if isinstance(node.left, ast.Name) and node.left.id == "TYPE_CHECKING":
-                return True
-            if (
-                isinstance(node.left, ast.Call)
-                and isinstance(node.left.func, ast.Name)
-                and node.left.func.id == "bool"
-                and len(node.left.args) == 1
-                and isinstance(node.left.args[0], ast.Name)
-                and node.left.args[0].id == "TYPE_CHECKING"
-            ):
-                return True
-
+            return is_type_checking_reference(node.left)
         return False
 
     if isinstance(node, ast.BoolOp) and isinstance(node.op, ast.And):
         has_type_checking = False
         for value in node.values:
-            if isinstance(value, ast.Name) and value.id == "TYPE_CHECKING":
+            if is_type_checking_name(value):
                 has_type_checking = True
+            
             elif isinstance(value, ast.Compare):
-                if simplify_comparison(value) is True:
-                    if isinstance(value.left, ast.Name) and value.left.id == "TYPE_CHECKING":
-                        has_type_checking = True
-                    elif (
-                        isinstance(value.left, ast.Call)
-                        and isinstance(value.left.func, ast.Name)
-                        and value.left.func.id == "bool"
-                        and len(value.left.args) == 1
-                        and isinstance(value.left.args[0], ast.Name)
-                        and value.left.args[0].id == "TYPE_CHECKING"
-                    ):
-                        has_type_checking = True
-
+                if simplify_comparison(value) is True and is_type_checking_reference(value.left):
+                    has_type_checking = True
+        
         return has_type_checking
 
     return False
@@ -141,13 +123,12 @@ def contains_type_checking_negation(node: ast.expr) -> bool:
     - not TYPE_CHECKING or something → True (in OR with negation)
     """
     if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not):
-        if isinstance(node.operand, ast.Name) and node.operand.id == "TYPE_CHECKING":
-            return True
+        return is_type_checking_name(node.operand)
 
     if isinstance(node, ast.BoolOp) and isinstance(node.op, ast.Or):
         for value in node.values:
             if isinstance(value, ast.UnaryOp) and isinstance(value.op, ast.Not):
-                if isinstance(value.operand, ast.Name) and value.operand.id == "TYPE_CHECKING":
+                if is_type_checking_name(value.operand):
                     return True
 
     return False
@@ -190,7 +171,7 @@ def is_type_checking_only(if_node: ast.If, in_else_branch: bool = False) -> bool
 
     test = if_node.test
 
-    if isinstance(test, ast.Name) and test.id == "TYPE_CHECKING":
+    if is_type_checking_name(test):
         return True
 
     simplified = simplify_comparison(test)
