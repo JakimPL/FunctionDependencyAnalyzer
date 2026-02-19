@@ -131,11 +131,11 @@
             },
             "external": {
                 "color": {
-                    "background": "#FFAB91",
-                    "border": "#FF7043",
+                    "background": "#FFCC80",
+                    "border": "#FB8C00",
                     "highlight": {
-                        "background": "#FFCCBC",
-                        "border": "#FF5722"
+                        "background": "#FFE0B2",
+                        "border": "#F57C00"
                     }
                 }
             },

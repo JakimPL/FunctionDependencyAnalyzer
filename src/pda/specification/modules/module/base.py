@@ -8,12 +8,9 @@ from typing import Optional, Self, Tuple
 from pydantic import Field, model_validator
 
 from pda.constants import DELIMITER
-from pda.exceptions import PDAPathResolutionError
 from pda.specification.base import Specification
 from pda.specification.imports.path import ImportPath
 from pda.specification.modules.module.category import ModuleCategory
-from pda.specification.modules.spec import find_module_spec
-from pda.tools.paths import resolve_path
 
 
 class BaseModule(Specification, ABC):
@@ -60,40 +57,12 @@ class BaseModule(Specification, ABC):
         return ImportPath.from_string(self.name)
 
     @property
-    def base_path(self) -> Path:
-        spec = find_module_spec(
-            self.top_level_module,
-            validate_origin=False,
-            expect_python=False,
-        )
-
-        path: Optional[Path] = None
-        if spec and spec.origin:
-            if spec.submodule_search_locations:
-                path = resolve_path(spec.submodule_search_locations[0])
-            else:
-                path = resolve_path(spec.origin)
-
-        if path is None:
-            raise PDAPathResolutionError(
-                f"Cannot determine base path for module '{self.name}' with top-level '{self.top_level_module}'"
-            )
-
-        return path.parent
+    @abstractmethod
+    def base_path(self) -> Optional[Path]: ...
 
     @property
-    def spec(self) -> ModuleSpec:
-        """
-        Convert the Module instance back to a ModuleSpec for compatibility with importlib.
-        """
-        return find_module_spec(
-            self.name,
-            package=self.package,
-            allow_missing_spec=False,
-            raise_error=True,
-            validate_origin=False,
-            expect_python=False,
-        )
+    @abstractmethod
+    def spec(self) -> Optional[ModuleSpec]: ...
 
     @abstractmethod
     def get_category(self, base_path: Optional[Path] = None) -> ModuleCategory: ...

@@ -10,8 +10,7 @@ from pda.analyzer.base import BaseAnalyzer
 from pda.analyzer.imports.parser import ImportStatementParser
 from pda.analyzer.lazy import lazy_execution
 from pda.config import ModuleImportsAnalyzerConfig, ValidationOptions
-from pda.exceptions import PDAImportPathError, PDAMissingModuleSpecError
-from pda.exceptions.analyzer import PDADependencyCycleWarning
+from pda.exceptions import PDADependencyCycleWarning, PDAImportPathError, PDAMissingModuleSpecError
 from pda.models import ModuleGraph, ModuleNode
 from pda.specification import (
     CategorizedModule,
@@ -24,6 +23,7 @@ from pda.specification import (
     ModuleSource,
     OriginType,
     SysPaths,
+    UnavailableModule,
     is_namespace_package,
     validate_spec_origin,
 )
@@ -193,6 +193,9 @@ class ModuleImportsAnalyzer(BaseAnalyzer[ModuleImportsAnalyzerConfig, ModuleGrap
         if not self._check_if_should_scan(module, processed=processed):
             return {}
 
+        if module.base_path is None:
+            return {}
+
         assert module.origin is not None
         return self.analyze_file(
             module.origin,
@@ -290,8 +293,7 @@ class ModuleImportsAnalyzer(BaseAnalyzer[ModuleImportsAnalyzerConfig, ModuleGrap
         modules: CategorizedModuleDict = {}
         for module_path in module_paths:
             module = self._get_module_from_import_path(module_source, module_path)
-            if module is not None:
-                modules[module.name] = module
+            modules[module.name] = module
 
         return modules
 
@@ -299,18 +301,26 @@ class ModuleImportsAnalyzer(BaseAnalyzer[ModuleImportsAnalyzerConfig, ModuleGrap
         self,
         module_source: ModuleSource,
         module_path: ImportPath,
-    ) -> Optional[CategorizedModule]:
+    ) -> CategorizedModule:
         spec = module_source.get_spec(module_path)
         package_spec = module_source.get_package_spec(module_path)
+        package = package_spec.name if package_spec is not None else None
+        unavailable_module = CategorizedModule(
+            module=UnavailableModule(
+                name=module_path.module if module_path.module else "<unknown>",
+                package=package,
+            ),
+            category=ModuleCategory.UNAVAILABLE,
+        )
+
         if spec is None:
             logger.debug(
                 "Module spec not found for import path '%s' (package: '%s')",
                 module_path,
                 package_spec.name if package_spec is not None else None,
             )
-            return None
+            return unavailable_module
 
-        package = package_spec.name if package_spec is not None else None
         try:
             return CategorizedModule.from_spec(
                 spec,
@@ -324,7 +334,6 @@ class ModuleImportsAnalyzer(BaseAnalyzer[ModuleImportsAnalyzerConfig, ModuleGrap
                 error.__class__.__name__,
                 error,
             )
-            return None
         except PDAImportPathError as import_error:
             logger.debug(
                 "Module '%s' import path error:\n%s: [%s]",
@@ -332,7 +341,8 @@ class ModuleImportsAnalyzer(BaseAnalyzer[ModuleImportsAnalyzerConfig, ModuleGrap
                 import_error.__class__.__name__,
                 import_error,
             )
-            return None
+
+        return unavailable_module
 
     def _create_root(self, filepath: Path) -> ModuleNode:
         if self._project_root is None or self._package is None:

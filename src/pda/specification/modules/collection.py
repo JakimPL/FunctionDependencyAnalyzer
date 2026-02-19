@@ -38,9 +38,6 @@ class ModulesCollection:
 
     def __getitem__(self, key: Union[str, ModuleCategory]) -> Union[CategorizedModule, CategorizedModuleDict]:
         if isinstance(key, ModuleCategory):
-            if key == ModuleCategory.UNAVAILABLE:
-                raise ValueError("Unavailable modules are not stored in this registry")
-
             return self._categorized_modules[key]
 
         if key in ModuleCategory:
@@ -89,9 +86,6 @@ class ModulesCollection:
 
     @property
     def unavailable(self) -> CategorizedModuleDict:
-        if not self._allow_unavailable:
-            raise ValueError("Unavailable modules are not stored in this registry")
-
         return self._categorized_modules[ModuleCategory.UNAVAILABLE].copy()
 
     @property
@@ -100,12 +94,7 @@ class ModulesCollection:
 
     @property
     def categories(self) -> Tuple[ModuleCategory, ...]:
-        return tuple(
-            filter(
-                lambda category: category != ModuleCategory.UNAVAILABLE or self._allow_unavailable,
-                ModuleCategory,
-            )
-        )
+        return tuple(ModuleCategory)
 
     def _initialize_modules_collection(self, modules: Iterable[CategorizedModule]) -> ModuleCollectionDict:
         categorized_modules: ModuleCollectionDict = {category: {} for category in self.categories}

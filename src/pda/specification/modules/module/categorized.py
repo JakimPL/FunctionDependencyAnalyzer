@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any, NamedTuple, Optional, Tuple, Union
 
 from pda.config import ValidationOptions
+from pda.exceptions.spec import PDAModuleSpecError
 from pda.specification.imports.origin import OriginType
 from pda.specification.modules.module.category import ModuleCategory
 from pda.specification.modules.module.module import Module
@@ -36,7 +37,7 @@ class CategorizedModule(NamedTuple):
         return self.module.qualified_name
 
     @property
-    def spec(self) -> ModuleSpec:
+    def spec(self) -> Optional[ModuleSpec]:
         return self.module.spec
 
     @property
@@ -52,8 +53,8 @@ class CategorizedModule(NamedTuple):
         return self.module.submodule_search_locations if isinstance(self.module, Module) else None
 
     @property
-    def base_path(self) -> Path:
-        return self.module.base_path
+    def base_path(self) -> Optional[Path]:
+        return self.module.base_path if isinstance(self.module, Module) else None
 
     @property
     def top_level_module(self) -> str:
@@ -91,7 +92,11 @@ class CategorizedModule(NamedTuple):
         project_root: Optional[Pathlike] = None,
         package: Optional[str] = None,
     ) -> CategorizedModule:
-        module = Module.from_spec(spec, package=package)
+        module: Union[Module, UnavailableModule]
+        try:
+            module = Module.from_spec(spec, package=package)
+        except PDAModuleSpecError as error:
+            module = UnavailableModule(name=spec.name, package=package, error=error)
         return CategorizedModule.from_module(
             module,
             category=category,
@@ -100,7 +105,7 @@ class CategorizedModule(NamedTuple):
 
     @staticmethod
     def from_module(
-        module: Module,
+        module: Union[Module, UnavailableModule],
         *,
         category: Optional[ModuleCategory] = None,
         project_root: Optional[Pathlike] = None,
@@ -115,20 +120,29 @@ class CategorizedModule(NamedTuple):
         project_root: Optional[Pathlike] = None,
         package: Optional[str] = None,
         validation_options: Optional[ValidationOptions] = None,
-    ) -> Optional[CategorizedModule]:
+    ) -> CategorizedModule:
         options: ValidationOptions = validation_options or ValidationOptions.strict()
-        spec = find_module_spec(name, package=package, **options.model_dump())
+
+        spec: Optional[ModuleSpec] = None
+        error: Optional[PDAModuleSpecError] = None
+        try:
+            spec = find_module_spec(name, package=package, **options.model_dump())
+        except PDAModuleSpecError as exception:
+            error = exception
+            if options.raise_error:
+                raise exception
+
         if not spec:
             logger.debug("Module '%s' not found", name)
-            return None
-
-        origin_type = OriginType.from_spec(spec)
-        if options.expect_python and origin_type not in (
-            OriginType.NONE,
-            OriginType.PYTHON,
-        ):
-            logger.debug("Skipping non-Python module: %s of origin %s", name, origin_type)
-            return None
+            module = UnavailableModule(
+                name=name,
+                package=package,
+                error=error,
+            )
+            return CategorizedModule(
+                module=module,
+                category=ModuleCategory.UNAVAILABLE,
+            )
 
         return CategorizedModule.from_spec(
             spec,
@@ -138,11 +152,14 @@ class CategorizedModule(NamedTuple):
 
     @staticmethod
     def infer_category(
-        module: Module,
+        module: Union[Module, UnavailableModule],
         *,
         category: Optional[ModuleCategory] = None,
         project_root: Optional[Pathlike] = None,
     ) -> ModuleCategory:
+        if isinstance(module, UnavailableModule):
+            return ModuleCategory.UNAVAILABLE
+
         if category is None:
             base_path = resolve_path(project_root)
             return module.get_category(base_path)

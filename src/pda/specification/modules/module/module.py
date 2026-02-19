@@ -7,12 +7,12 @@ from typing import Any, Dict, Optional, Self, Tuple
 
 from pydantic import Field, model_validator
 
-from pda.exceptions import PDAInvalidOriginTypeError, PDAMissingModuleNameError
+from pda.exceptions import PDAInvalidOriginTypeError, PDAMissingModuleNameError, PDAPathResolutionError
 from pda.specification.imports.origin import OriginType
 from pda.specification.modules.module.base import BaseModule
 from pda.specification.modules.module.category import ModuleCategory
 from pda.specification.modules.module.type import ModuleType
-from pda.specification.modules.spec import validate_spec
+from pda.specification.modules.spec import find_module_spec, validate_spec
 from pda.tools.paths import resolve_path
 
 
@@ -88,6 +88,28 @@ class Module(BaseModule):
 
         return None
 
+    @property
+    def base_path(self) -> Path:
+        spec = find_module_spec(
+            self.top_level_module,
+            validate_origin=False,
+            expect_python=False,
+        )
+
+        path: Optional[Path] = None
+        if spec and spec.origin:
+            if spec.submodule_search_locations:
+                path = resolve_path(spec.submodule_search_locations[0])
+            else:
+                path = resolve_path(spec.origin)
+
+        if path is None:
+            raise PDAPathResolutionError(
+                f"Cannot determine base path for module '{self.name}' with top-level '{self.top_level_module}'"
+            )
+
+        return path.parent
+
     @staticmethod
     def retrieve_submodule_search_locations(spec: ModuleSpec) -> Tuple[Path, ...]:
         locations = spec.submodule_search_locations or []
@@ -112,6 +134,20 @@ class Module(BaseModule):
             origin=origin,
             origin_type=origin_type,
             submodule_search_locations=submodule_search_locations,
+        )
+
+    @property
+    def spec(self) -> ModuleSpec:
+        """
+        Convert the Module instance back to a ModuleSpec for compatibility with importlib.
+        """
+        return find_module_spec(
+            self.name,
+            package=self.package,
+            allow_missing_spec=False,
+            raise_error=True,
+            validate_origin=False,
+            expect_python=False,
         )
 
     def get_category(self, base_path: Optional[Path] = None) -> ModuleCategory:

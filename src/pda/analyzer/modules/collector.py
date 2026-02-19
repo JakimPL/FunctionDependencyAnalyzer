@@ -267,7 +267,7 @@ class ModulesCollector(BaseAnalyzer[ModulesCollectorConfig, ModuleGraph]):
         level: int = 0,
     ) -> None:
         spec = node.module.spec
-        if not spec.submodule_search_locations:
+        if not spec or not spec.submodule_search_locations:
             return
 
         for location in spec.submodule_search_locations:
