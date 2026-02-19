@@ -1,9 +1,11 @@
 from pda.specification.imports.origin import OriginType
-from pda.specification.modules.categorized import CategorizedModule
-from pda.specification.modules.category import ModuleCategory
 from pda.specification.modules.collection import ModulesCollection
-from pda.specification.modules.module import Module
-from pda.specification.modules.source import ModuleSource
+from pda.specification.modules.module.base import BaseModule
+from pda.specification.modules.module.categorized import CategorizedModule
+from pda.specification.modules.module.category import ModuleCategory
+from pda.specification.modules.module.module import Module
+from pda.specification.modules.module.type import ModuleType
+from pda.specification.modules.module.unavailable import UnavailableModule
 from pda.specification.modules.spec import (
     find_module_spec,
     is_module,
@@ -22,8 +24,10 @@ __all__ = [
     "OriginType",
     "SysPaths",
     "ModuleCategory",
+    "ModuleType",
+    "BaseModule",
     "Module",
-    "ModuleSource",
+    "UnavailableModule",
     "CategorizedModule",
     "is_module",
     "is_package",

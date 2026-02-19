@@ -51,9 +51,9 @@ class ModuleSource(Specification):
         if DELIMITER in self.top_level:
             raise ValueError(f"Top-level module name cannot contain delimiters '{DELIMITER}'")
 
-        self.relative
-        self.top_level
-        self.module
+        _ = self.relative
+        _ = self.top_level
+        _ = self.module
         return self
 
     @cached_property

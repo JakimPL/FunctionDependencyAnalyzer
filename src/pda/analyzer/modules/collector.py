@@ -41,7 +41,7 @@ class ModulesCollector(BaseAnalyzer[ModulesCollectorConfig, ModuleGraph]):
         self._path_forest: PathForest = self._initialize_forest()
 
         self._module_validation_options = ValidationOptions(
-            allow_missing_spec=False,
+            allow_missing_spec=True,
             validate_origin=True,
             expect_python=False,
             raise_error=False,

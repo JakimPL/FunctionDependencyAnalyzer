@@ -2,8 +2,8 @@ from collections.abc import Iterable
 from copy import copy
 from typing import Self, Tuple, Union, overload
 
-from pda.specification.modules.categorized import CategorizedModule
-from pda.specification.modules.category import ModuleCategory
+from pda.specification.modules.module.categorized import CategorizedModule
+from pda.specification.modules.module.category import ModuleCategory
 from pda.specification.modules.types import CategorizedModuleDict, ModuleCollectionDict
 
 

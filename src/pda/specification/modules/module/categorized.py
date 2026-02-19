@@ -2,21 +2,22 @@ from __future__ import annotations
 
 from importlib.machinery import ModuleSpec
 from pathlib import Path
-from typing import Any, NamedTuple, Optional, Tuple
+from typing import Any, NamedTuple, Optional, Tuple, Union
 
 from pda.config import ValidationOptions
 from pda.specification.imports.origin import OriginType
-from pda.specification.modules.category import ModuleCategory
-from pda.specification.modules.module import Module
+from pda.specification.modules.module.category import ModuleCategory
+from pda.specification.modules.module.module import Module
+from pda.specification.modules.module.type import ModuleType
+from pda.specification.modules.module.unavailable import UnavailableModule
 from pda.specification.modules.spec import find_module_spec
-from pda.specification.modules.type import ModuleType
 from pda.tools.logger import logger
 from pda.tools.paths import resolve_path
 from pda.types import Pathlike
 
 
 class CategorizedModule(NamedTuple):
-    module: Module
+    module: Union[Module, UnavailableModule]
     category: ModuleCategory
 
     def __getattr__(self, item: Any) -> Any:
@@ -40,15 +41,15 @@ class CategorizedModule(NamedTuple):
 
     @property
     def origin(self) -> Optional[Path]:
-        return self.module.origin
+        return self.module.origin if isinstance(self.module, Module) else None
 
     @property
     def origin_type(self) -> OriginType:
-        return self.module.origin_type
+        return self.module.origin_type if isinstance(self.module, Module) else OriginType.NONE
 
     @property
     def submodule_search_locations(self) -> Optional[Tuple[Path, ...]]:
-        return self.module.submodule_search_locations
+        return self.module.submodule_search_locations if isinstance(self.module, Module) else None
 
     @property
     def base_path(self) -> Path:
@@ -67,20 +68,20 @@ class CategorizedModule(NamedTuple):
         return self.module.is_private
 
     @property
-    def is_module(self) -> bool:
-        return self.module.is_module
+    def is_module(self) -> Optional[bool]:
+        return self.module.is_module if isinstance(self.module, Module) else None
 
     @property
-    def is_package(self) -> bool:
-        return self.module.is_package
+    def is_package(self) -> Optional[bool]:
+        return self.module.is_package if isinstance(self.module, Module) else None
 
     @property
-    def is_namespace_package(self) -> bool:
-        return self.module.is_namespace_package
+    def is_namespace_package(self) -> Optional[bool]:
+        return self.module.is_namespace_package if isinstance(self.module, Module) else None
 
     @property
     def type(self) -> ModuleType:
-        return self.module.type
+        return self.module.type if isinstance(self.module, Module) else ModuleType.UNKNOWN
 
     @staticmethod
     def from_spec(
