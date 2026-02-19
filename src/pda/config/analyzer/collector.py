@@ -16,7 +16,11 @@ class ModulesCollectorConfig(BaseConfig):
         ),
         description="Configuration for scanning modules during collection.",
     )
-
+    qualified_names: bool = Field(
+        default=False,
+        description="""Whether to use qualified module names (e.g., 'package.module' instead of 'module')
+        as labels in the graph.""",
+    )
     max_level: Optional[int] = Field(
         default=None,
         description="Maximum depth for collecting imports. None means no limit.",

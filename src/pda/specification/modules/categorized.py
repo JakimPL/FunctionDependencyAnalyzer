@@ -31,6 +31,10 @@ class CategorizedModule(NamedTuple):
         return self.module.module_name
 
     @property
+    def qualified_name(self) -> str:
+        return self.module.qualified_name
+
+    @property
     def spec(self) -> ModuleSpec:
         return self.module.spec
 

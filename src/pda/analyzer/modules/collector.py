@@ -249,7 +249,7 @@ class ModulesCollector(BaseAnalyzer[ModulesCollectorConfig, ModuleGraph]):
         if module.is_private and self.config.hide_private:
             return
 
-        node = ModuleNode(module, level=level)
+        node = ModuleNode(module, level=level, qualified_name=self.config.qualified_names)
         self._add(node, parent)
         self._add_submodules(node, base_path, package=name, level=level + 1)
 

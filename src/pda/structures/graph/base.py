@@ -17,7 +17,7 @@ class Graph(Generic[NodeT]):
     """
 
     def __init__(self, graph: Optional[nx.DiGraph] = None) -> None:
-        self._graph = self._sort(graph or nx.DiGraph())
+        self._graph = graph or nx.DiGraph()
 
     def __iter__(self) -> Iterator[NodeT]:
         return iter(self._graph.nodes)

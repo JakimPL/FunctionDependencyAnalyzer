@@ -5,8 +5,15 @@ from pda.structures.node.base import Node
 
 
 class ModuleNode(Node[CategorizedModule]):
-    def __init__(self, module: CategorizedModule, *, ordinal: int = 0, level: int = 0) -> None:
-        label = module.module_name
+    def __init__(
+        self,
+        module: CategorizedModule,
+        *,
+        ordinal: int = 0,
+        level: int = 0,
+        qualified_name: bool = False,
+    ) -> None:
+        label = module.qualified_name if qualified_name else module.module_name
         details = module.name
         group = module.category.value
         order = module.category.order

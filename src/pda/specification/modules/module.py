@@ -67,6 +67,10 @@ class Module(Specification):
         return self.name.removesuffix(".__init__").split(DELIMITER)[-1]
 
     @property
+    def qualified_name(self) -> str:
+        return self.name.removesuffix(".__init__")
+
+    @property
     def top_level_module(self) -> str:
         top_level = self.package or self.name
         return top_level.split(DELIMITER)[0]
@@ -77,7 +81,7 @@ class Module(Specification):
 
     @property
     def is_private(self) -> bool:
-        return self.module_name.startswith("_")
+        return any(part.startswith("_") and not part.startswith("__") for part in self.parts)
 
     @property
     def is_module(self) -> bool:

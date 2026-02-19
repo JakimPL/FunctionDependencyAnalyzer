@@ -37,5 +37,5 @@ class ModuleGraph(Graph[ModuleNode]):
         """
         quotient = self._quotient_graph()
         simplified_graph = self._relabel_quotient_graph(quotient)
-        sorted_graph = self._sort(simplified_graph)
+        sorted_graph = self._sort(simplified_graph, method="topological")
         return self.__class__(graph=sorted_graph)

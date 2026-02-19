@@ -354,7 +354,7 @@ class ModuleImportsAnalyzer(BaseAnalyzer[ModuleImportsAnalyzerConfig, ModuleGrap
         if module is None:
             raise PDAMissingModuleSpecError(f"Could not create root module for {filepath}")
 
-        return ModuleNode(module)
+        return ModuleNode(module, qualified_name=self.config.qualified_names)
 
     def _collect_new_modules(
         self,
@@ -374,7 +374,12 @@ class ModuleImportsAnalyzer(BaseAnalyzer[ModuleImportsAnalyzerConfig, ModuleGrap
                 continue
 
             level = depth + 1
-            child = ModuleNode(imported_module, level=level, ordinal=self._ordinal())
+            child = ModuleNode(
+                imported_module,
+                level=level,
+                ordinal=self._ordinal(),
+                qualified_name=self.config.qualified_names,
+            )
             self._add(child, parent=node)
             new_nodes.append((child, level))
 

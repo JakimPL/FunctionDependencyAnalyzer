@@ -28,6 +28,11 @@ class ModuleImportsAnalyzerConfig(BaseConfig):
         default=False,
         description="Whether to unify nodes representing the same module across different import paths.",
     )
+    qualified_names: bool = Field(
+        default=False,
+        description="""Whether to use qualified module names (e.g., 'package.module' instead of 'module')
+        as labels in the graph.""",
+    )
     ignore_cycles: bool = Field(default=False, description="Ignore cycles in the dependency graph.")
     follow_conditional: bool = Field(default=True, description="Analyze if/try/except branches.")
     max_depth: Optional[int] = Field(
