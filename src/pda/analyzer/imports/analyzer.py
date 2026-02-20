@@ -1,18 +1,16 @@
 from __future__ import annotations
 
-import warnings
 from collections import deque
 from copy import copy
-from enum import Enum, auto
 from pathlib import Path
-from typing import Deque, Dict, List, Optional, Set, Tuple, Union, overload, override
+from typing import Deque, List, Optional, Set, Tuple, Union, overload, override
 
 from pda.analyzer.base import BaseAnalyzer
+from pda.analyzer.imports.cycle import CycleDetector
 from pda.analyzer.imports.parser import ImportStatementParser
+from pda.analyzer.imports.resolver import ModuleResolver
 from pda.analyzer.lazy import lazy_execution
-from pda.config import ModuleImportsAnalyzerConfig, ValidationOptions
-from pda.exceptions import PDADependencyCycleWarning, PDAImportPathError, PDAMissingModuleSpecError
-from pda.exceptions.analyzer import PDADependencyCycleError
+from pda.config import ModuleImportsAnalyzerConfig
 from pda.models import ModuleGraph, ModuleNode
 from pda.specification import (
     CategorizedModule,
@@ -24,20 +22,10 @@ from pda.specification import (
     ModulesCollection,
     ModuleSource,
     OriginType,
-    SysPaths,
-    UnavailableModule,
-    is_namespace_package,
-    validate_spec_origin,
 )
 from pda.structures import OrderedSet
 from pda.tools.logger import logger
 from pda.types import Pathlike
-
-
-class NodeState(Enum):
-    UNVISITED = auto()
-    VISITING = auto()
-    VISITED = auto()
 
 
 class ModuleImportsAnalyzer(BaseAnalyzer[ModuleImportsAnalyzerConfig, ModuleGraph]):
@@ -49,26 +37,31 @@ class ModuleImportsAnalyzer(BaseAnalyzer[ModuleImportsAnalyzerConfig, ModuleGrap
         project_root: Pathlike,
         package: str,
     ) -> None:
-        super().__init__(config=config, project_root=project_root, package=package)
+        super().__init__(
+            config=config,
+            project_root=project_root,
+            package=package,
+        )
+
+        if not self._project_root:
+            raise ValueError("Project root must be provided")
+
+        if not self._package:
+            raise ValueError("Package must be provided")
 
         self._filepath: Optional[Path] = None
         self._collection: ModulesCollection = ModulesCollection(allow_unavailable=True)
         self._graph: ModuleGraph = ModuleGraph()
         self._parser: ImportStatementParser = ImportStatementParser()
+        self._cycle_detector: CycleDetector = CycleDetector(config)
 
-        self._root_validation_options = ValidationOptions.strict()
-        self._module_validation_options = ValidationOptions(
-            allow_missing_spec=True,
-            validate_origin=True,
-            expect_python=False,
-            raise_error=False,
+        self._resolver: ModuleResolver = ModuleResolver(
+            project_root=self._project_root,
+            package=self._package,
+            config=config,
         )
 
         self._counter = 0
-
-        self._node_states: Dict[Optional[Path], NodeState] = {}
-        self._cycle_detected: bool = False
-        self._cycle_path: List[Path] = []
 
     def __bool__(self) -> bool:
         return not self._graph.empty
@@ -98,9 +91,7 @@ class ModuleImportsAnalyzer(BaseAnalyzer[ModuleImportsAnalyzerConfig, ModuleGrap
         self._collection.clear()
         self._graph.clear()
         self._counter = 0
-        self._node_states.clear()
-        self._cycle_detected = False
-        self._cycle_path.clear()
+        self._cycle_detector.reset()
 
     @property
     def filepath(self) -> Optional[Path]:
@@ -135,12 +126,12 @@ class ModuleImportsAnalyzer(BaseAnalyzer[ModuleImportsAnalyzerConfig, ModuleGrap
         self.clear()
 
         self._filepath = filepath
-        root = self._create_root(filepath)
+        root = self._resolver.create_root(filepath)
         self._add(root)
 
         processed: Set[Optional[Path]] = {None}
         new_nodes: Deque[Tuple[ModuleNode, int, List[Path]]] = deque([(root, 0, [])])
-        self._node_states[root.module.origin] = NodeState.VISITING
+        self._cycle_detector.mark_visiting(root.module.origin)
 
         while new_nodes:
             node, depth, path = new_nodes.pop()
@@ -161,32 +152,15 @@ class ModuleImportsAnalyzer(BaseAnalyzer[ModuleImportsAnalyzerConfig, ModuleGrap
                     path=current_path,
                 )
 
-            self._node_states[module.origin] = NodeState.VISITED
+            self._cycle_detector.mark_visited(module.origin)
 
         self._graph.sort(method=self.config.sort_method)
-
-    def _detect_cycle_in_path(self, path: List[Path]) -> bool:
-        if len(path) != len(set(path)):
-            return True
-
-        return False
-
-    def _show_detected_cycle(self) -> None:
-        paths = "\n-> ".join(str(path) for path in self._cycle_path)
-        if not self.config.ignore_cycles:
-            raise PDADependencyCycleError(f"Dependency cycle detected in path:\n{paths}")
-
-        logger.warning("Cycle detected: %s", paths)
 
     def _check_graph(self) -> None:
         if self._graph.empty:
             logger.warning("The dependency graph is empty")
 
-        if self._cycle_detected:
-            message = "Import cycle detected during analysis:\n-> {}".format(
-                "\n-> ".join(str(path) for path in self._cycle_path),
-            )
-            warnings.warn(message, PDADependencyCycleWarning)
+        self._cycle_detector.report_cycles()
 
     def _add(self, node: ModuleNode, parent: Optional[ModuleNode] = None) -> None:
         self._graph.add_node(node)
@@ -211,11 +185,11 @@ class ModuleImportsAnalyzer(BaseAnalyzer[ModuleImportsAnalyzerConfig, ModuleGrap
             origin=filepath,
             base_path=base_path,
             package=package,
-            validation_options=self._module_validation_options,
+            validation_options=self._resolver.module_validation_options,
         )
 
         import_paths = self._collect_imports(module_source, processed=processed, is_root=is_root)
-        return self._collect_modules(module_source, import_paths)
+        return self._resolver.resolve_batch(module_source, import_paths)
 
     def analyze_module(
         self,
@@ -292,15 +266,9 @@ class ModuleImportsAnalyzer(BaseAnalyzer[ModuleImportsAnalyzerConfig, ModuleGrap
         processed: Optional[Set[Optional[Path]]] = None,
         is_root: bool = False,
     ) -> List[ImportPath]:
-        module_paths: OrderedSet[ImportPath] = OrderedSet()
         import_statements = self._collect_import_statements(module_source.origin)
         import_paths = self._filter_runtime_import_paths(import_statements, is_root=is_root)
-        for import_path in import_paths:
-            module_path = self._resolve(module_source, import_path, processed)
-            if module_path is not None:
-                module_paths.add(module_path)
-
-        return list(module_paths)
+        return self._resolve_import_paths(module_source, import_paths, processed=processed)
 
     def _collect_import_statements(
         self,
@@ -334,87 +302,6 @@ class ModuleImportsAnalyzer(BaseAnalyzer[ModuleImportsAnalyzerConfig, ModuleGrap
 
         return list(import_paths)
 
-    def _collect_modules(
-        self,
-        module_source: ModuleSource,
-        module_paths: List[ImportPath],
-    ) -> CategorizedModuleDict:
-        modules: CategorizedModuleDict = {}
-        for module_path in module_paths:
-            module = self._get_module_from_import_path(module_source, module_path)
-            modules[module.name] = module
-
-        return modules
-
-    def _get_module_from_import_path(
-        self,
-        module_source: ModuleSource,
-        module_path: ImportPath,
-    ) -> CategorizedModule:
-        spec = module_source.get_spec(module_path)
-        package_spec = module_source.get_package_spec(module_path)
-        package = package_spec.name if package_spec is not None else None
-        unavailable_module = CategorizedModule(
-            module=UnavailableModule(
-                name=module_path.module if module_path.module else "<unknown>",
-                package=package,
-            ),
-            category=ModuleCategory.UNAVAILABLE,
-        )
-
-        if spec is None:
-            logger.debug(
-                "Module spec not found for import path '%s' (package: '%s')",
-                module_path,
-                package_spec.name if package_spec is not None else None,
-            )
-            return unavailable_module
-
-        try:
-            return CategorizedModule.from_spec(
-                spec,
-                project_root=self._project_root,
-                package=package,
-            )
-        except (AttributeError, KeyError, IndexError) as error:
-            logger.warning(
-                "Module '%s' error:\n%s: [%s]",
-                spec.name,
-                error.__class__.__name__,
-                error,
-            )
-        except PDAImportPathError as import_error:
-            logger.debug(
-                "Module '%s' import path error:\n%s: [%s]",
-                spec.name,
-                import_error.__class__.__name__,
-                import_error,
-            )
-
-        return unavailable_module
-
-    def _create_root(self, filepath: Path) -> ModuleNode:
-        if self._project_root is None or self._package is None:
-            raise ValueError("Project root and package must be set to create the root module")
-
-        root_source = ModuleSource(
-            origin=filepath,
-            base_path=self._project_root,
-            package=self._package,
-        )
-
-        module = CategorizedModule.create(
-            name=root_source.module.name,
-            project_root=self._project_root,
-            package=self._package,
-            validation_options=self._root_validation_options,
-        )
-
-        if module is None:
-            raise PDAMissingModuleSpecError(f"Could not create root module for {filepath}")
-
-        return ModuleNode(module, qualified_name=self.config.qualified_names)
-
     def _collect_new_modules(
         self,
         node: ModuleNode,
@@ -442,10 +329,7 @@ class ModuleImportsAnalyzer(BaseAnalyzer[ModuleImportsAnalyzerConfig, ModuleGrap
             ):
                 continue
 
-            if imported_module.origin in path:
-                self._cycle_detected = True
-                self._cycle_path = path + [imported_module.origin]
-                self._show_detected_cycle()
+            if self._cycle_detector.check_cycle(path, imported_module.origin):
                 continue
 
             level = depth + 1
@@ -458,8 +342,22 @@ class ModuleImportsAnalyzer(BaseAnalyzer[ModuleImportsAnalyzerConfig, ModuleGrap
 
             current_path = path + [imported_module.origin] if imported_module.origin else path
             self._add(child, parent=node)
-            self._node_states[imported_module.origin] = NodeState.VISITING
+            self._cycle_detector.mark_visiting(imported_module.origin)
             new_nodes.append((child, level, current_path))
+
+    def _resolve_import_paths(
+        self,
+        module_source: ModuleSource,
+        import_paths: List[ImportPath],
+        *,
+        processed: Optional[Set[Optional[Path]]] = None,
+    ) -> List[ImportPath]:
+        processed = processed or set()
+        return [
+            path
+            for import_path in import_paths
+            if (path := self._resolver.resolve_import_path(module_source, import_path, processed)) is not None
+        ]
 
     def _ordinal(self) -> int:
         if self.config.unify_nodes:
@@ -467,31 +365,6 @@ class ModuleImportsAnalyzer(BaseAnalyzer[ModuleImportsAnalyzerConfig, ModuleGrap
 
         self._counter += 1
         return self._counter
-
-    def _resolve(
-        self,
-        module_source: ModuleSource,
-        path: ImportPath,
-        processed: Optional[Set[Optional[Path]]] = None,
-    ) -> Optional[ImportPath]:
-        processed = processed or set()
-        spec = module_source.get_spec(path)
-        if spec is None:
-            logger.debug("Module spec not found for import path '%s'", path)
-            return None
-
-        if is_namespace_package(spec):
-            return None
-
-        origin = validate_spec_origin(spec, expect_python=self._module_validation_options.expect_python)
-        if origin in processed:
-            return None
-
-        return SysPaths.resolve(
-            origin,
-            base_path=module_source.base_path,
-            validation_options=self._module_validation_options,
-        )
 
     @classmethod
     def default_config(cls) -> ModuleImportsAnalyzerConfig:
