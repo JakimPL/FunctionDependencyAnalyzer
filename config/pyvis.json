@@ -169,7 +169,7 @@
                 "levelSeparation": 250,
                 "treeSpacing": 100,
                 "blockShifting": false,
-                "edgeMinimization": true,
+                "edgeMinimization": false,
                 "parentCentralization": false
             }
         },
