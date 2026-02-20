@@ -73,9 +73,6 @@ def _contains_main_guard_in_and_chain(node: ast.BoolOp) -> bool:
 
 
 def _contains_main_guard_in_and(node: ast.expr) -> bool:
-    if isinstance(node, ast.Compare):
-        return is_main_guard_comparison(node)
-
     if isinstance(node, ast.BoolOp) and isinstance(node.op, ast.And):
         return _contains_main_guard_in_and_chain(node)
 

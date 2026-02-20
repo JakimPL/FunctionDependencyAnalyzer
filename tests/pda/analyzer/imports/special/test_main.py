@@ -89,6 +89,46 @@ else:
     pass
 """,
         ),
+        TestCase(
+            label="wrong_operator",
+            expected=(False,),
+            code="""
+if __name__ > "__main__":
+    pass
+""",
+        ),
+        TestCase(
+            label="nested_and_with_main_guard",
+            expected=(True,),
+            code="""
+if (condition1 and condition2) and __name__ == "__main__":
+    pass
+""",
+        ),
+        TestCase(
+            label="not_compare_main_guard",
+            expected=(False,),
+            code="""
+if not (__name__ == "__main__"):
+    pass
+""",
+        ),
+        TestCase(
+            label="nested_and_bool_op_with_main_guard",
+            expected=(True,),
+            code="""
+if (True and False) and __name__ == "__main__":
+    pass
+""",
+        ),
+        TestCase(
+            label="negated_main_guard_with_compare",
+            expected=(False,),
+            code="""
+if __name__ != "__main__":
+    pass
+""",
+        ),
     ]
 
     def _find_if_nodes(self, root: ast.Module) -> Tuple[ast.If, ...]:

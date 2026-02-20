@@ -19,6 +19,9 @@ def is_type_checking_only(if_node: ast.If, in_else_branch: bool = False) -> bool
     if is_type_checking_name(test):
         return True
 
+    if is_bool_type_checking_call(test):
+        return True
+
     if _is_simplified_to_true_with_type_checking(test):
         return True
 

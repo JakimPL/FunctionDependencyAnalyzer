@@ -128,6 +128,168 @@ else:
     pass
 """,
         ),
+        TestCase(
+            label="constant_true",
+            expected=(True,),
+            code="""
+if True and TYPE_CHECKING:
+    pass
+""",
+        ),
+        TestCase(
+            label="constant_false",
+            expected=(False,),
+            code="""
+if False or TYPE_CHECKING:
+    pass
+""",
+        ),
+        TestCase(
+            label="type_checking_not_equal_false",
+            expected=(True,),
+            code="""
+if TYPE_CHECKING != False:
+    pass
+""",
+        ),
+        TestCase(
+            label="type_checking_is_not_false",
+            expected=(True,),
+            code="""
+if TYPE_CHECKING is not False:
+    pass
+""",
+        ),
+        TestCase(
+            label="type_checking_less_than_one",
+            expected=(False,),
+            code="""
+if TYPE_CHECKING < 1:
+    pass
+""",
+        ),
+        TestCase(
+            label="nested_and_with_type_checking",
+            expected=(True,),
+            code="""
+if (condition1 and condition2) and TYPE_CHECKING:
+    pass
+""",
+        ),
+        TestCase(
+            label="constant_comparison_gt",
+            expected=(True,),
+            code="""
+if 5 > 3 and TYPE_CHECKING:
+    pass
+""",
+        ),
+        TestCase(
+            label="constant_comparison_lt",
+            expected=(True,),
+            code="""
+if 2 < 10 and TYPE_CHECKING:
+    pass
+""",
+        ),
+        TestCase(
+            label="constant_comparison_eq",
+            expected=(True,),
+            code="""
+if 42 == 42 and TYPE_CHECKING:
+    pass
+""",
+        ),
+        TestCase(
+            label="constant_comparison_ne",
+            expected=(True,),
+            code="""
+if 1 != 2 and TYPE_CHECKING:
+    pass
+""",
+        ),
+        TestCase(
+            label="constant_comparison_gte",
+            expected=(True,),
+            code="""
+if 5 >= 5 and TYPE_CHECKING:
+    pass
+""",
+        ),
+        TestCase(
+            label="constant_comparison_lte",
+            expected=(True,),
+            code="""
+if 3 <= 10 and TYPE_CHECKING:
+    pass
+""",
+        ),
+        TestCase(
+            label="constant_comparison_type_error",
+            expected=(False,),
+            code="""
+if "string" > 123:
+    pass
+""",
+        ),
+        TestCase(
+            label="type_checking_equal_false",
+            expected=(False,),
+            code="""
+if TYPE_CHECKING == False:
+    pass
+""",
+        ),
+        TestCase(
+            label="type_checking_is_false",
+            expected=(False,),
+            code="""
+if TYPE_CHECKING is False:
+    pass
+""",
+        ),
+        TestCase(
+            label="type_checking_not_equal_true",
+            expected=(False,),
+            code="""
+if TYPE_CHECKING != True:
+    pass
+""",
+        ),
+        TestCase(
+            label="type_checking_is_not_true",
+            expected=(False,),
+            code="""
+if TYPE_CHECKING is not True:
+    pass
+""",
+        ),
+        TestCase(
+            label="bool_type_checking_cast",
+            expected=(True,),
+            code="""
+if bool(TYPE_CHECKING):
+    pass
+""",
+        ),
+        TestCase(
+            label="nested_and_bool_op_with_type_checking",
+            expected=(True,),
+            code="""
+if (True and False) and TYPE_CHECKING:
+    pass
+""",
+        ),
+        TestCase(
+            label="or_with_negated_type_checking",
+            expected=(False, True),
+            code="""
+if not TYPE_CHECKING or other_condition:
+    pass
+else:
+    pass
+""",
+        ),
     ]
 
     def _find_if_nodes(self, root: ast.Module) -> Tuple[ast.If, ...]:

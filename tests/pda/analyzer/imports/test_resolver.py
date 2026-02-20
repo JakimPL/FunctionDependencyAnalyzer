@@ -34,7 +34,6 @@ def create_resolver(
     return ModuleResolver(project_root=root, package=package, config=config)
 
 
-# Real module specs for tests
 PATHLIB_SPEC = importlib.util.find_spec("pathlib")
 TYPING_SPEC = importlib.util.find_spec("typing")
 PATHLIB_FILE = Path(sys.modules["pathlib"].__file__)  # type: ignore
