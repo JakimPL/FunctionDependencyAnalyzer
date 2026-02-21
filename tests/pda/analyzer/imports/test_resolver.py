@@ -13,7 +13,7 @@ import pytest
 
 from pda.analyzer.imports.resolver import ModuleResolver
 from pda.config import ModuleImportsAnalyzerConfig
-from pda.exceptions import PDAImportPathError, PDAMissingModuleSpecError
+from pda.exceptions import PDAFindSpecError, PDAImportPathError, PDAMissingModuleSpecError
 from pda.models import ModuleNode
 from pda.specification import CategorizedModule, ImportPath, ModuleCategory, ModuleSource, UnavailableModule
 
@@ -304,7 +304,11 @@ class TestResolveToModuleMocked:
             spec_return=None,
             package_spec_name=None,
             expected=CategorizedModule(
-                module=UnavailableModule(name="test.module", package=None),
+                module=UnavailableModule(
+                    name="test.module",
+                    package=None,
+                    error=PDAFindSpecError(ImportPath(module="test.module")),
+                ),
                 category=ModuleCategory.UNAVAILABLE,
             ),
             from_spec_called=False,
@@ -314,7 +318,11 @@ class TestResolveToModuleMocked:
             spec_return=None,
             package_spec_name="test_package",
             expected=CategorizedModule(
-                module=UnavailableModule(name="test.module", package="test_package"),
+                module=UnavailableModule(
+                    name="test.module",
+                    package="test_package",
+                    error=PDAFindSpecError(ImportPath(module="test.module")),
+                ),
                 category=ModuleCategory.UNAVAILABLE,
             ),
             from_spec_called=False,
@@ -324,7 +332,11 @@ class TestResolveToModuleMocked:
             spec_return=Mock(spec=ModuleSpec, name="test.module.spec"),
             package_spec_name=None,
             expected=CategorizedModule(
-                module=UnavailableModule(name="test.module", package=None),
+                module=UnavailableModule(
+                    name="test.module",
+                    package=None,
+                    error=AttributeError("test"),
+                ),
                 category=ModuleCategory.UNAVAILABLE,
             ),
             from_spec_called=True,
@@ -334,7 +346,11 @@ class TestResolveToModuleMocked:
             spec_return=Mock(spec=ModuleSpec, name="test.module.spec"),
             package_spec_name=None,
             expected=CategorizedModule(
-                module=UnavailableModule(name="test.module", package=None),
+                module=UnavailableModule(
+                    name="test.module",
+                    package=None,
+                    error=KeyError("test"),
+                ),
                 category=ModuleCategory.UNAVAILABLE,
             ),
             from_spec_called=True,
@@ -344,7 +360,11 @@ class TestResolveToModuleMocked:
             spec_return=Mock(spec=ModuleSpec, name="test.module.spec"),
             package_spec_name=None,
             expected=CategorizedModule(
-                module=UnavailableModule(name="test.module", package=None),
+                module=UnavailableModule(
+                    name="test.module",
+                    package=None,
+                    error=IndexError("test"),
+                ),
                 category=ModuleCategory.UNAVAILABLE,
             ),
             from_spec_called=True,
@@ -354,7 +374,11 @@ class TestResolveToModuleMocked:
             spec_return=Mock(spec=ModuleSpec, name="test.module.spec"),
             package_spec_name=None,
             expected=CategorizedModule(
-                module=UnavailableModule(name="test.module", package=None),
+                module=UnavailableModule(
+                    name="test.module",
+                    package=None,
+                    error=PDAImportPathError("test"),
+                ),
                 category=ModuleCategory.UNAVAILABLE,
             ),
             from_spec_called=True,
@@ -371,7 +395,7 @@ class TestResolveToModuleMocked:
     @pytest.mark.parametrize("test_case", test_cases, ids=lambda tc: tc.label)
     def test_resolve_to_module(self, test_case: TestCase) -> None:
         resolver = create_resolver()
-        mock_import_path = Mock(spec=ImportPath, module="test.module")
+        mock_import_path = ImportPath(module="test.module")
 
         mock_source = setup_mock_source(
             spec_return=test_case.spec_return,
@@ -386,7 +410,14 @@ class TestResolveToModuleMocked:
         with mock_resolve_to_module_dependencies(side_effect) as mock_from_spec:
             result = resolver.resolve_to_module(mock_source, mock_import_path)
 
-        assert result == test_case.expected
+        assert result.category == test_case.expected.category
+        assert result.module.name == test_case.expected.module.name
+        assert result.module.package == test_case.expected.module.package
+        assert type(result.module) == type(test_case.expected.module)
+        if isinstance(result.module, UnavailableModule) and isinstance(test_case.expected.module, UnavailableModule):
+            assert type(result.module.error) == type(test_case.expected.module.error)
+            assert str(result.module.error) == str(test_case.expected.module.error)
+
         assert_called_if(
             mock_from_spec,
             test_case.from_spec_called,
@@ -426,11 +457,23 @@ class TestResolveToModuleReal:
 
         result = resolver.resolve_to_module(mock_source, mock_import_path)
 
+        module = UnavailableModule(
+            name="nonexistent_module_xyz123",
+            package=None,
+            error=PDAFindSpecError(mock_import_path),
+        )
         expected = CategorizedModule(
-            module=UnavailableModule(name="nonexistent_module_xyz123", package=None),
+            module=module,
             category=ModuleCategory.UNAVAILABLE,
         )
-        assert result == expected
+
+        assert result.category == expected.category
+        assert result.module.name == module.name
+        assert result.module.package == module.package
+        assert type(result.module) == type(module)
+        assert isinstance(result.module, UnavailableModule)
+        assert type(result.module.error) == type(module.error)
+        assert str(result.module.error) == str(module.error)
 
 
 class TestResolveBatchMocked:
