@@ -3,7 +3,6 @@ from pda.config.analyzer.imports import ModuleImportsAnalyzerConfig
 from pda.config.analyzer.scan import ModuleScanConfig
 from pda.config.base import BaseConfig
 from pda.config.pyvis.config import PyVisConfig
-from pda.config.pyvis.options import PDAOptions
 from pda.config.pyvis.theme import Theme
 from pda.config.structures.graph import GraphSortMethod
 from pda.config.types import ConfigT
@@ -21,6 +20,5 @@ __all__ = [
     "GraphSortMethod",
     # pyvis
     "Theme",
-    "PDAOptions",
     "PyVisConfig",
 ]

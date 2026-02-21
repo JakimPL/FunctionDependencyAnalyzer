@@ -1,11 +1,11 @@
 import json
-from copy import deepcopy
 from pathlib import Path
-from typing import Any, Dict, Generic, List, Optional
+from typing import Any, Dict, Generic, List, Literal, Optional, Union, overload
 
+from bs4 import BeautifulSoup, Tag
 from pyvis.network import Network
 
-from pda.config import PDAOptions, PyVisConfig, Theme
+from pda.config import PyVisConfig, Theme
 from pda.structures.graph.base import Graph
 from pda.structures.node.types import NodeT
 from pda.types.nested_defaultdict import NestedDefaultDict, nested_defaultdict
@@ -21,29 +21,38 @@ class PyVisConverter(Generic[NodeT]):
         theme: Theme = "light",
         network_kwargs: Optional[Dict[str, Any]] = None,
         vis_options: Optional[Dict[str, Dict[str, Any]]] = None,
-        auto_adjust_spacing: Optional[bool] = None,
     ) -> None:
         self.load_config(
             config_path,
             theme=theme,
             network_kwargs=network_kwargs,
             vis_options=vis_options,
-            auto_adjust_spacing=auto_adjust_spacing,
         )
 
-    def __call__(self, graph: Graph[NodeT]) -> Network:
-        nodes = sorted(graph.nodes)
-        options = self._prepare_vis_options(nodes)
+    @overload
+    def __call__(self, graph: Graph[NodeT], *, html: Literal[False] = False, **kwargs: Any) -> str: ...
 
-        network_kwargs = {**self.network_kwargs}
-        pyvis_graph = Network(directed=True, **network_kwargs)
-        node_map = self._add_nodes(pyvis_graph, nodes)
-        self._add_edges(pyvis_graph, graph, node_map)
+    @overload
+    def __call__(self, graph: Graph[NodeT], *, html: Literal[True], **kwargs: Any) -> Network: ...
 
-        if options:
-            pyvis_graph.set_options(json.dumps(options))
+    def __call__(
+        self,
+        graph: Graph[NodeT],
+        *,
+        html: bool = False,
+        **kwargs: Any,
+    ) -> Union[str, Network]:
+        network = self._build_network(graph, **kwargs)
+        self._set_network_options(network)
 
-        return pyvis_graph
+        if html:
+            return self.to_html(network)
+
+        return network
+
+    def to_html(self, network: Network) -> str:
+        html: str = network.generate_html(".temp.html")
+        return self._inject_background_color(html)
 
     def load_config(
         self,
@@ -52,7 +61,6 @@ class PyVisConverter(Generic[NodeT]):
         theme: Theme = "light",
         network_kwargs: Optional[Dict[str, Any]] = None,
         vis_options: Optional[Dict[str, Dict[str, Any]]] = None,
-        auto_adjust_spacing: Optional[bool] = None,
     ) -> None:
         default = PyVisConfig.default(theme=theme)
         if not config_path.exists():
@@ -63,12 +71,8 @@ class PyVisConverter(Generic[NodeT]):
         config_dict: Dict[str, Dict[str, Any]] = {**default.model_dump(), **config.model_dump()}
         vis: Dict[str, Dict[str, Any]] = vis_options if vis_options is not None else config_dict.get("vis", {})
         network: Dict[str, Any] = network_kwargs if network_kwargs is not None else config_dict.get("network", {})
-        pda_options: PDAOptions = PDAOptions(**config_dict.get("pda", {}))
-        if auto_adjust_spacing is not None:
-            pda_options.auto_adjust_spacing = auto_adjust_spacing
 
         self.config = PyVisConfig(
-            pda=pda_options,
             network=network,
             vis=vis,
         )
@@ -81,22 +85,20 @@ class PyVisConverter(Generic[NodeT]):
     def network_kwargs(self) -> Dict[str, Any]:
         return self.config.network or {}
 
-    @property
-    def auto_adjust_spacing(self) -> bool:
-        return self.config.pda.auto_adjust_spacing
+    def _build_network(
+        self,
+        graph: Graph[NodeT],
+        **kwargs: Any,
+    ) -> Network:
+        nodes = sorted(graph.nodes)
+        network_kwargs = self.network_kwargs
+        pyvis_graph = Network(directed=True, **network_kwargs, **kwargs)
+        node_map = self._add_nodes(pyvis_graph, nodes)
+        self._add_edges(pyvis_graph, graph, node_map)
+        return pyvis_graph
 
-    @property
-    def ratio(self) -> float:
-        return self.config.pda.ratio
-
-    def _prepare_vis_options(self, nodes: List[NodeT]) -> Dict[str, Dict[str, Any]]:
-        options: Dict[str, Dict[str, Any]] = deepcopy(self.vis_options)
-
-        if self.auto_adjust_spacing and nodes:
-            level_separation = self._calculate_level_separation(nodes)
-            options["layout"]["hierarchical"]["levelSeparation"] = level_separation
-
-        return options
+    def _set_network_options(self, network: Network) -> None:
+        network.set_options(json.dumps(self.vis_options))
 
     def _add_nodes(self, pyvis_graph: Network, nodes: List[NodeT]) -> Dict[NodeT, int]:
         node_map: Dict[NodeT, int] = {}
@@ -140,29 +142,23 @@ class PyVisConverter(Generic[NodeT]):
             **edge_properties,
         }
 
-    def _calculate_level_separation(self, nodes: List[NodeT]) -> int:
-        base_node_spacing = self.vis_options["layout"]["hierarchical"]["levelSeparation"] or 150
-        if not nodes:
-            return base_node_spacing
+    def _inject_background_color(self, html: str) -> str:
+        soup = BeautifulSoup(html, "html.parser")
+        head: Optional[Tag] = soup.head
+        if head is None:
+            raise ValueError("Generated HTML is missing a <head> element.")
 
-        levels = [node.level for node in nodes]
-        max_level = max(levels, default=0)
+        network_config = self.network_kwargs
+        style_tag = soup.new_tag("style")
+        style_tag.string = f"""
+        body {{
+            background-color: {network_config.get("bgcolor", "#ffffff")};
+        }}
 
-        nodes_per_level: Dict[int, int] = {}
-        for level in levels:
-            nodes_per_level[level] = nodes_per_level.get(level, 0) + 1
+        .card, #mynetwork {{
+            border: none !important;
+        }}
+        """
 
-        max_width = max(nodes_per_level.values(), default=1)
-        depth = max_level + 1
-
-        ratio = self.ratio
-        ratio = 1.0 / ratio if self.vis_options["layout"]["hierarchical"]["direction"] in ("LR", "RL") else ratio
-        estimated_width = max_width * base_node_spacing
-        target_height = estimated_width * ratio
-
-        if depth > 1:
-            level_separation = max(base_node_spacing, int(target_height / depth))
-        else:
-            level_separation = base_node_spacing
-
-        return level_separation
+        head.append(style_tag)
+        return str(soup)

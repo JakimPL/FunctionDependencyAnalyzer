@@ -115,7 +115,7 @@ def find_module_spec(
         if raise_error:
             raise PDAFindSpecError(message) from error
 
-        logger.warning("%s: %s", message, error_message)
+        logger.debug("%s: %s", message, error_message)
 
     if spec is None:
         if allow_missing_spec:

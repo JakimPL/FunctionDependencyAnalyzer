@@ -4,7 +4,6 @@ from typing import Any, Dict, Optional, Self
 from pydantic import Field
 
 from pda.config.base import BaseConfig
-from pda.config.pyvis.options import PDAOptions
 from pda.config.pyvis.theme import Theme
 from pda.tools.serialization import load_yaml
 from pda.tools.templates import TemplateLoader
@@ -12,10 +11,6 @@ from pda.types import nested_defaultdict
 
 
 class PyVisConfig(BaseConfig):
-    pda: PDAOptions = Field(
-        default_factory=PDAOptions,
-        description="Options specific to the Python Dependency Analyzer visualization.",
-    )
     network: Optional[Dict[str, Any]] = Field(
         default=None,
         description="Keyword arguments to be passed to the pyvis Network constructor.",
@@ -39,7 +34,6 @@ class PyVisConfig(BaseConfig):
         theme_vars = cls._load_theme(config_path, theme)
         loader = TemplateLoader(theme_vars)
         return cls(
-            pda=load_yaml(config_path / "pda.yaml"),
             network=loader.load(config_path / "network.yaml"),
             vis=loader.load(config_path / "vis.yaml"),
         )

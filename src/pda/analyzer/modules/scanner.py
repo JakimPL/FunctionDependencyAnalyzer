@@ -53,7 +53,7 @@ class FileSystemScanner:
         """
         import_path = ImportPath.from_path(path, base_path)
         if import_path is None:
-            logger.warning(
+            logger.debug(
                 "Could not determine import path for '%s' relative to '%s'",
                 path,
                 base_path,
