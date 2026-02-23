@@ -6,9 +6,11 @@ from typing import Any, Dict, Optional
 from pda.models import ASTNode
 from pda.models.python.dump import ast_dump
 from pda.specification import ScopeType, Symbol
+from pda.structures import AnyNode
+from pda.types.typehints import ASTT
 
 
-class Scope:
+class ScopeNode(AnyNode[AnyNode[ASTT]]):
     """
     Represents a Python scope with its symbol table.
 
@@ -16,12 +18,14 @@ class Scope:
     a reference to its parent scope for hierarchical name resolution.
     """
 
+    parent: Optional[ScopeNode[ASTT]]
+
     def __init__(
         self,
         scope_type: ScopeType,
-        node: ASTNode[Any],
+        node: ASTNode[ASTT],
         origin: Path,
-        parent: Optional[Scope] = None,
+        parent: Optional[ScopeNode[ASTT]] = None,
     ) -> None:
         """
         Initialize a new scope.
@@ -32,12 +36,32 @@ class Scope:
             origin: The file path where this scope is defined.
             parent: The enclosing parent scope (None for module scope).
         """
+        label = getattr(node.ast, "name", scope_type.value)
+        super().__init__(
+            item=node,
+            parent=parent,
+            ordinal=id(node),
+            label=label,
+            details=str(origin),
+            group=scope_type.value,
+        )
         self.scope_type = scope_type
-        self.node = node
         self.origin = origin
-        self.parent = parent
         self.symbols: Dict[str, Symbol] = {}
         self.imports: Dict[str, Symbol] = {}
+
+    @property
+    def node(self) -> ASTNode[ASTT]:
+        """Get the AST node that created this scope."""
+        return self.item
+
+    def get_parent_scope(self) -> Optional[ScopeNode[Any]]:
+        """Get the parent scope with proper type narrowing."""
+        if self.parent is None:
+            return None
+
+        assert isinstance(self.parent, ScopeNode)
+        return self.parent
 
     def define(self, name: str, symbol: Symbol) -> None:
         """
@@ -96,14 +120,16 @@ class Scope:
         if symbol is not None:
             return symbol
 
-        if self.parent is not None:
-            if self.scope_type == ScopeType.FUNCTION and self.parent.scope_type == ScopeType.CLASS:
-                if self.parent.parent is not None:
-                    return self.parent.parent.lookup(name)
+        parent_scope = self.get_parent_scope()
+        if parent_scope is not None:
+            if self.scope_type == ScopeType.FUNCTION and parent_scope.scope_type == ScopeType.CLASS:
+                grandparent_scope = parent_scope.get_parent_scope()
+                if grandparent_scope is not None:
+                    return grandparent_scope.lookup(name)
 
                 return None
 
-            return self.parent.lookup(name)
+            return parent_scope.lookup(name)
 
         return None
 
@@ -120,7 +146,7 @@ class Scope:
         Returns:
             Symbol if found in enclosing function scopes, None otherwise.
         """
-        current = self.parent
+        current: Optional[ScopeNode[Any]] = self.parent
 
         while current is not None:
             if current.scope_type in (ScopeType.MODULE, ScopeType.CLASS):
@@ -142,11 +168,7 @@ class Scope:
         Returns:
             String like "module.path.ClassName" or "module.path".
         """
-        if self.parent is None:
-            return ""
-
-        parent_prefix = self.parent.get_fqn_prefix()
-
+        parent_prefix = self.parent.get_fqn_prefix() if self.parent else ""
         if hasattr(self.node.ast, "name"):
             node_name = str(self.node.ast.name)
             if parent_prefix:

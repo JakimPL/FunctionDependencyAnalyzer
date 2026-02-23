@@ -11,3 +11,7 @@ class PDAMissingScopeOriginError(PDAScopeException):
 
 class PDAEmptyScopeError(PDAScopeException):
     """Raised when a scope is expected to have symbols but is found to be empty."""
+
+
+class PDAUninitializedScopeBuilderError(PDAScopeException):
+    """Raised when attempting to use a ScopeBuilder that has not been built yet."""

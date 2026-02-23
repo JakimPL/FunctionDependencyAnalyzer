@@ -1,11 +1,16 @@
 from __future__ import annotations
 
 import ast
-from typing import Any, Dict, List, Union
+from typing import TYPE_CHECKING, Any, List, Union
 
-from pda.analyzer.scope.scope import Scope
+from pda.exceptions import PDAUninitializedScopeBuilderError
 from pda.models import ASTNode
+from pda.models.scope.forest import ScopeForest
+from pda.models.scope.node import ScopeNode
 from pda.specification import SourceSpan, Symbol
+
+if TYPE_CHECKING:
+    from pda.analyzer.scope.builder import ScopeBuilder
 
 
 class SymbolCollector:
@@ -16,47 +21,61 @@ class SymbolCollector:
     function/class definitions, parameters, etc.) in their appropriate scopes.
     """
 
-    def __init__(self, scope_tree: Scope, node_to_scope: Dict[ASTNode[Any], Scope]) -> None:
+    def __init__(self, builder: ScopeBuilder) -> None:
         """
         Initialize the symbol collector.
 
         Args:
-            scope_tree: The root scope from ScopeBuilder.
-            node_to_scope: Mapping from ASTNode to its containing Scope (from ScopeBuilder).
+            builder: The ScopeBuilder instance (must have been built already).
+
+        Raises:
+            PDAUninitializedScopeBuilderError: If the builder has not been built yet.
         """
-        self.scope_tree = scope_tree
-        self.node_to_scope = node_to_scope
+        if builder.scope_tree is None:
+            raise PDAUninitializedScopeBuilderError(
+                "ScopeBuilder must be built before creating SymbolCollector. Call builder.build() first."
+            )
+
+        self.scope_tree = builder.scope_tree
+        self.node_to_scope = builder.node_to_scope
 
     def collect(self) -> None:
         """
         Walk the scope tree and collect all symbols into their respective scopes.
         """
-        self._collect_in_scope(self.scope_tree)
+        if isinstance(self.scope_tree, ScopeForest):
+            for root_scope in self.scope_tree.roots:
+                self._collect_in_scope(root_scope)
+        else:
+            self._collect_in_scope(self.scope_tree)
 
-    def _collect_in_scope(self, scope: Scope) -> None:
+    def _collect_in_scope(self, scope: ScopeNode[Any]) -> None:
         """
         Collect symbols defined in a scope and recursively process child scopes.
 
         Args:
             scope: The scope to process.
         """
-        self._visit_node(scope.node, scope)
-        for child_scope in self._get_child_scopes(scope):
+        self._visit_scope_body(scope.node, scope)
+        for child_scope in scope.children:
             self._collect_in_scope(child_scope)
 
-    def _get_child_scopes(self, scope: Scope) -> List[Scope]:
+    def _visit_scope_body(self, node: ASTNode[Any], scope: ScopeNode[Any]) -> None:
         """
-        Get all direct child scopes of a given scope.
+        Visit the body of a scope (not the defining node itself).
+
+        Visits all children nodes in this scope. For nodes that define their own
+        scopes (functions, classes), the name is collected in the current scope,
+        but the contents are collected when that child scope is visited recursively.
 
         Args:
-            scope: The parent scope.
-
-        Returns:
-            List of child Scope objects.
+            node: The scope's defining node.
+            scope: The scope to collect symbols in.
         """
-        return [s for s in self.node_to_scope.values() if s.parent is scope]
+        for child in node.children:
+            self._visit_node(child, scope)
 
-    def _visit_node(self, node: ASTNode[Any], scope: Scope) -> None:
+    def _visit_node(self, node: ASTNode[Any], scope: ScopeNode[Any]) -> None:
         """
         Visit a node and collect symbols it defines.
 
@@ -84,12 +103,9 @@ class SymbolCollector:
             case _:
                 pass
 
-        for child in node.children:
-            child_scope = self.node_to_scope.get(child, scope)
-            if child_scope is scope:
-                self._visit_node(child, scope)
-
-    def _collect_function(self, node: ASTNode[Union[ast.FunctionDef, ast.AsyncFunctionDef]], scope: Scope) -> None:
+    def _collect_function(
+        self, node: ASTNode[Union[ast.FunctionDef, ast.AsyncFunctionDef]], scope: ScopeNode[Any]
+    ) -> None:
         """
         Collect a function definition and its parameters.
 
@@ -106,7 +122,7 @@ class SymbolCollector:
 
         self._collect_parameters(func_def.args, func_scope)
 
-    def _collect_class(self, node: ASTNode[ast.ClassDef], scope: Scope) -> None:
+    def _collect_class(self, node: ASTNode[ast.ClassDef], scope: ScopeNode[Any]) -> None:
         """
         Collect a class definition.
 
@@ -119,7 +135,7 @@ class SymbolCollector:
     def _collect_assignment(
         self,
         node: ASTNode[Union[ast.Assign, ast.AugAssign, ast.AnnAssign]],
-        scope: Scope,
+        scope: ScopeNode[Any],
     ) -> None:
         """
         Collect assignment targets as symbols.
@@ -132,7 +148,7 @@ class SymbolCollector:
         for target in targets:
             self._collect_names_from_target(target, node.ast, scope)
 
-    def _collect_walrus(self, node: ASTNode[ast.NamedExpr], scope: Scope) -> None:
+    def _collect_walrus(self, node: ASTNode[ast.NamedExpr], scope: ScopeNode[Any]) -> None:
         """
         Collect walrus operator assignment target.
 
@@ -144,7 +160,7 @@ class SymbolCollector:
         if isinstance(target, ast.Name):
             self._define_symbol(target.id, node.ast, scope)
 
-    def _collect_for_target(self, node: ASTNode[Union[ast.For, ast.AsyncFor]], scope: Scope) -> None:
+    def _collect_for_target(self, node: ASTNode[Union[ast.For, ast.AsyncFor]], scope: ScopeNode[Any]) -> None:
         """
         Collect for loop target variables.
 
@@ -154,7 +170,7 @@ class SymbolCollector:
         """
         self._collect_names_from_target(node.ast.target, node.ast, scope)
 
-    def _collect_with_targets(self, node: ASTNode[Union[ast.With, ast.AsyncWith]], scope: Scope) -> None:
+    def _collect_with_targets(self, node: ASTNode[Union[ast.With, ast.AsyncWith]], scope: ScopeNode[Any]) -> None:
         """
         Collect with statement target variables.
 
@@ -166,7 +182,7 @@ class SymbolCollector:
             if item.optional_vars is not None:
                 self._collect_names_from_target(item.optional_vars, node.ast, scope)
 
-    def _collect_exception_handler(self, node: ASTNode[ast.ExceptHandler], scope: Scope) -> None:
+    def _collect_exception_handler(self, node: ASTNode[ast.ExceptHandler], scope: ScopeNode[Any]) -> None:
         """
         Collect exception handler variable.
 
@@ -177,7 +193,7 @@ class SymbolCollector:
         if node.ast.name is not None:
             self._define_symbol(node.ast.name, node.ast, scope)
 
-    def _collect_match_targets(self, node: ASTNode[ast.Match], scope: Scope) -> None:
+    def _collect_match_targets(self, node: ASTNode[ast.Match], scope: ScopeNode[Any]) -> None:
         """
         Collect pattern variables from match cases.
 
@@ -188,7 +204,7 @@ class SymbolCollector:
         for case in node.ast.cases:
             self._collect_names_from_pattern(case.pattern, case, scope)
 
-    def _collect_parameters(self, args: ast.arguments, scope: Scope) -> None:
+    def _collect_parameters(self, args: ast.arguments, scope: ScopeNode[Any]) -> None:
         """
         Collect function parameters as symbols.
 
@@ -232,7 +248,7 @@ class SymbolCollector:
             case _:
                 return []
 
-    def _collect_names_from_target(self, target: ast.expr, def_node: ast.AST, scope: Scope) -> None:
+    def _collect_names_from_target(self, target: ast.expr, def_node: ast.AST, scope: ScopeNode[Any]) -> None:
         """
         Recursively extract names from an assignment target.
 
@@ -252,7 +268,7 @@ class SymbolCollector:
             case _:
                 pass
 
-    def _collect_names_from_pattern(self, pattern: ast.pattern, def_node: ast.AST, scope: Scope) -> None:
+    def _collect_names_from_pattern(self, pattern: ast.pattern, def_node: ast.AST, scope: ScopeNode[Any]) -> None:
         """
         Recursively extract names from a match pattern.
 
@@ -289,7 +305,7 @@ class SymbolCollector:
             case _:
                 pass
 
-    def _define_symbol(self, name: str, node: ast.AST, scope: Scope) -> None:
+    def _define_symbol(self, name: str, node: ast.AST, scope: ScopeNode[Any]) -> None:
         """
         Create a Symbol and register it in the scope.
 

@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import ast
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
-from pda.analyzer.scope.scope import Scope
 from pda.exceptions import PDAEmptyScopeError, PDAMissingScopeOriginError
 from pda.models import ASTForest, ASTNode
+from pda.models.scope.forest import ScopeForest
+from pda.models.scope.node import ScopeNode
 from pda.specification import ScopeType
 
 
@@ -27,24 +28,30 @@ class ScopeBuilder:
             forest: The ASTForest containing wrapped AST nodes with their origins.
         """
         self.forest = forest
-        self.node_to_scope: Dict[ASTNode[Any], Scope] = {}
-        self.scope_tree: Optional[Scope] = None
-        self._current_scope: Optional[Scope] = None
+        self.node_to_scope: Dict[ASTNode[Any], ScopeNode[Any]] = {}
+        self.scope_tree: Optional[Union[ScopeNode[Any], ScopeForest]] = None
+        self.module_scopes: List[ScopeNode[Any]] = []
+        self._current_scope: Optional[ScopeNode[Any]] = None
         self._current_origin: Optional[Path] = None
 
-    def build(self) -> Scope:
+    def build(self) -> Union[ScopeNode[Any], ScopeForest]:
         """
         Build the scope hierarchy by walking the AST.
 
         Returns:
-            The root module scope (if single file) or first module scope (if multiple files).
+            A ScopeNode if single file, or ScopeForest if multiple files.
         """
         for root in self.forest.roots:
             self._visit_node(root)
 
-        if self.scope_tree is None:
+        if not self.module_scopes:
             raise PDAEmptyScopeError("Failed to build scope tree - no module found")
 
+        if len(self.module_scopes) == 1:
+            self.scope_tree = self.module_scopes[0]
+            return self.scope_tree
+
+        self.scope_tree = ScopeForest(self.module_scopes)
         return self.scope_tree
 
     def _visit_node(self, node: ASTNode[Any]) -> None:
@@ -80,14 +87,14 @@ class ScopeBuilder:
         if origin is None:
             raise PDAMissingScopeOriginError(f"Cannot find origin for module node {node}")
 
-        module_scope = Scope(
+        module_scope = ScopeNode(
             scope_type=ScopeType.MODULE,
             node=node,
             origin=origin,
             parent=None,
         )
 
-        self.scope_tree = module_scope
+        self.module_scopes.append(module_scope)
         self._current_scope = module_scope
         self._current_origin = origin
         self._map_node_to_current_scope(node)
@@ -104,14 +111,14 @@ class ScopeBuilder:
         if self._current_origin is None:
             raise PDAMissingScopeOriginError("Cannot create scope without current origin")
 
-        new_scope = Scope(
+        new_scope = ScopeNode(
             scope_type=scope_type,
             node=node,
             origin=self._current_origin,
             parent=self._current_scope,
         )
 
-        self._map_node_to_current_scope(node)
+        self.node_to_scope[node] = new_scope
         previous_scope = self._current_scope
         self._current_scope = new_scope
         self._visit_children(node)
@@ -137,7 +144,7 @@ class ScopeBuilder:
         if self._current_scope is not None:
             self.node_to_scope[node] = self._current_scope
 
-    def get_scope(self, node: ASTNode[Any]) -> Optional[Scope]:
+    def get_scope(self, node: ASTNode[Any]) -> Optional[ScopeNode[Any]]:
         """
         Get the scope for a given AST node.
 
@@ -149,7 +156,7 @@ class ScopeBuilder:
         """
         return self.node_to_scope.get(node)
 
-    def get_all_scopes(self) -> List[Scope]:
+    def get_all_scopes(self) -> List[ScopeNode[Any]]:
         """
         Get all unique scopes in the tree.
 

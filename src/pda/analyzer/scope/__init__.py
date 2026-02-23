@@ -1,10 +1,12 @@
 from pda.analyzer.scope.builder import ScopeBuilder
 from pda.analyzer.scope.collector import SymbolCollector
-from pda.analyzer.scope.scope import Scope
+from pda.models.scope.forest import ScopeForest
+from pda.models.scope.node import ScopeNode
 from pda.specification.source.scope import ScopeType
 
 __all__ = [
-    "Scope",
+    "ScopeForest",
+    "ScopeNode",
     "ScopeBuilder",
     "ScopeType",
     "SymbolCollector",
