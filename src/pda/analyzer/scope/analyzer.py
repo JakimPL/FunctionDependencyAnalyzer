@@ -4,10 +4,8 @@ from typing import Any, Dict, List, Optional, Union
 from pda.analyzer.base import BaseAnalyzer
 from pda.analyzer.scope.builder import ScopeBuilder
 from pda.analyzer.scope.collector import SymbolCollector
-from pda.config.analyzer.scope import ScopeAnalyzerConfig
-from pda.models import ASTForest
-from pda.models.scope.forest import ScopeForest
-from pda.models.scope.node import ScopeNode
+from pda.config import ScopeAnalyzerConfig
+from pda.models import ASTForest, ScopeForest, ScopeNode
 from pda.specification import Symbol
 from pda.types import Pathlike
 
@@ -106,23 +104,35 @@ class ScopeAnalyzer(BaseAnalyzer[ScopeAnalyzerConfig, ScopeForest]):
 
     def _analyze(self, paths: List[Path]) -> None:
         """
-        Perform the actual analysis.
+        Perform the actual analysis in two passes.
+
+        Pass 1: Build skeleton scope structure to get node-to-scope mapping
+        Pass 2: Collect symbols using the mapping
+        Pass 3: Build final scopes with complete symbol tables
 
         Args:
-            file_paths: List of resolved Python file paths to analyze.
+            paths: List of resolved Python file paths to analyze.
         """
         self.clear()
-
         self._files = paths
         forest = self._construct_ast_forest()
 
-        builder = ScopeBuilder()
-        self._scope_forest = builder(forest)
+        skeleton_builder = ScopeBuilder()
+        _, node_to_scope_node = skeleton_builder(forest)
 
         collector = SymbolCollector()
-        self._symbols_by_scope = collector(self._scope_forest)
+        symbols_by_node = collector(forest, node_to_scope_node)
 
-        self._define_symbols()
+        final_builder = ScopeBuilder()
+        self._scope_forest, _ = final_builder(forest, symbols_by_node)
+
+        self._map_symbols_to_scopes()
+
+    def _map_symbols_to_scopes(self) -> None:
+        """Map collected symbols to their corresponding scopes for easy lookup."""
+        assert self._scope_forest is not None, "Scope forest must be built before mapping symbols"
+        for scope in self._scope_forest:
+            self._symbols_by_scope[scope] = scope.symbols
 
     def _resolve_paths(self, paths: Optional[Union[List[Pathlike], List[Path]]]) -> List[Path]:
         """
@@ -145,16 +155,12 @@ class ScopeAnalyzer(BaseAnalyzer[ScopeAnalyzerConfig, ScopeForest]):
 
         Args:
             filepaths: List of resolved Python file paths to analyze.
+
         Returns:
             An ASTForest containing the parsed ASTs of the given files.
         """
         assert self._files is not None, "Files must be set before constructing AST forest"
         return ASTForest(self._files)
-
-    def _define_symbols(self) -> None:
-        for scope, symbols in self._symbols_by_scope.items():
-            for name, symbol in symbols.items():
-                scope.define(name, symbol)
 
     @classmethod
     def default_config(cls) -> ScopeAnalyzerConfig:

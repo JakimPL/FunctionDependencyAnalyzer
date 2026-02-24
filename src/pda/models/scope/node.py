@@ -28,6 +28,8 @@ class ScopeNode(AnyNode[ASTNode[ASTT]]):
         *,
         parent: Optional[ScopeNode[ASTT]] = None,
         label: Optional[str] = None,
+        symbols: Optional[Dict[str, Symbol]] = None,
+        imports: Optional[Dict[str, Symbol]] = None,
     ) -> None:
         """
         Initialize a new scope.
@@ -37,10 +39,12 @@ class ScopeNode(AnyNode[ASTNode[ASTT]]):
             node: The AST node that created this scope.
             origin: The file path where this scope is defined.
             parent: The enclosing parent scope (None for module scope).
-            label: The label for this scope node (if None, defaults to node.label).
+            label: The label for this scope node (if None, defaults to formatted scope label).
+            symbols: Dictionary of symbols defined in this scope.
+            imports: Dictionary of imported symbols in this scope.
         """
         label = label or node.label
-        details = node.details
+        details = self._build_scope_details(scope_type, symbols, imports)
         group = node.group
         super().__init__(
             item=node,
@@ -52,41 +56,18 @@ class ScopeNode(AnyNode[ASTNode[ASTT]]):
         )
         self.scope_type = scope_type
         self.origin = origin
-        self.symbols: Dict[str, Symbol] = {}
-        self.imports: Dict[str, Symbol] = {}
+        self.symbols = symbols or {}
+        self.imports = imports or {}
 
     @property
     def node(self) -> ASTNode[ASTT]:
         """Get the AST node that created this scope."""
         return self.item
 
-    def get_parent_scope(self) -> Optional[ScopeNode[Any]]:
-        """Get the parent scope with proper type narrowing."""
-        if self.parent is None:
-            return None
-
-        assert isinstance(self.parent, ScopeNode)
-        return self.parent
-
-    def define(self, name: str, symbol: Symbol) -> None:
-        """
-        Add a local definition to this scope.
-
-        Args:
-            name: The symbol name.
-            symbol: The Symbol object containing definition information.
-        """
-        self.symbols[name] = symbol
-
-    def import_symbol(self, name: str, symbol: Symbol) -> None:
-        """
-        Add an imported symbol to this scope.
-
-        Args:
-            name: The local name (may be aliased).
-            symbol: The Symbol object from the imported module.
-        """
-        self.imports[name] = symbol
+    def __repr__(self) -> str:
+        """String representation for debugging."""
+        node_info = ast_dump(self.node.ast)
+        return f"Scope({self.scope_type.value}, {node_info}, {len(self.symbols)} symbols, {len(self.imports)} imports)"
 
     def lookup_local(self, name: str) -> Optional[Symbol]:
         """
@@ -125,10 +106,10 @@ class ScopeNode(AnyNode[ASTNode[ASTT]]):
         if symbol is not None:
             return symbol
 
-        parent_scope = self.get_parent_scope()
+        parent_scope = self.parent
         if parent_scope is not None:
             if self.scope_type == ScopeType.FUNCTION and parent_scope.scope_type == ScopeType.CLASS:
-                grandparent_scope = parent_scope.get_parent_scope()
+                grandparent_scope = parent_scope.parent
                 if grandparent_scope is not None:
                     return grandparent_scope.lookup(name)
 
@@ -166,24 +147,25 @@ class ScopeNode(AnyNode[ASTNode[ASTT]]):
 
         return None
 
-    def get_fqn_prefix(self) -> str:
+    @property
+    def fqn(self) -> str:
         """
         Get the fully qualified name prefix for symbols defined in this scope.
+
+        Delegates to the underlying ASTNode.
 
         Returns:
             String like "module.path.ClassName" or "module.path".
         """
-        parent_prefix = self.parent.get_fqn_prefix() if self.parent else ""
-        if hasattr(self.node.ast, "name"):
-            node_name = str(self.node.ast.name)
-            if parent_prefix:
-                return f"{parent_prefix}.{node_name}"
+        return self.node.fqn
 
-            return node_name
-
-        return parent_prefix
-
-    def __repr__(self) -> str:
-        """String representation for debugging."""
-        node_info = ast_dump(self.node.ast)
-        return f"Scope({self.scope_type.value}, {node_info}, {len(self.symbols)} symbols, {len(self.imports)} imports)"
+    @staticmethod
+    def _build_scope_details(
+        scope_type: ScopeType,
+        symbols: Optional[Dict[str, Symbol]],
+        imports: Optional[Dict[str, Symbol]],
+    ) -> str:
+        """Build details string for scope node display."""
+        symbol_count = len(symbols or {})
+        import_count = len(imports or {})
+        return f"{scope_type.value} | {symbol_count} symbols | {import_count} imports"

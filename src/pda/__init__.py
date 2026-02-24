@@ -1,4 +1,4 @@
-from pda.analyzer import ImportStatementParser, ModuleImportsAnalyzer, ModulesCollector
+from pda.analyzer import ImportStatementParser, ModuleImportsAnalyzer, ModulesCollector, ScopeAnalyzer
 from pda.config import ModuleImportsAnalyzerConfig, ModuleScanConfig, ModulesCollectorConfig
 from pda.constants import APPLICATION_NAME
 from pda.models import (
@@ -57,6 +57,7 @@ __all__ = [
     "ModulesCollector",
     "ImportStatementParser",
     "ModuleImportsAnalyzer",
+    "ScopeAnalyzer",
     # Tools
     "parse_python_file",
     # Constants

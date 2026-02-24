@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from abc import ABC
 from collections.abc import Iterable, Iterator
 from typing import TYPE_CHECKING, Dict, Generic, Optional, Set

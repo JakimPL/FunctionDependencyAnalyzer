@@ -37,6 +37,24 @@ class ASTNode(AnyNode[ASTT]):
     def type(self) -> Type[ASTT]:
         return type(self.ast)
 
+    @property
+    def fqn(self) -> str:
+        """
+        Get the fully qualified name prefix by walking parent nodes.
+
+        Returns:
+            String like "module.path.ClassName" or "module.path".
+        """
+        parent_prefix = self.parent.fqn if self.parent else ""
+        if hasattr(self.ast, "name"):
+            node_name = str(self.ast.name)
+            if parent_prefix:
+                return f"{parent_prefix}.{node_name}"
+
+            return node_name
+
+        return parent_prefix
+
     def __str__(self) -> str:
         return ast_label(self.ast)
 
