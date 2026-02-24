@@ -57,8 +57,6 @@ class SymbolCollector:
             self._symbols_by_node[scope_node] = {}
 
         self._visit_scope_body(scope_node)
-
-        # Find and process child scopes
         for child in scope_node.children:
             if self._is_scope_defining(child):
                 self._collect_in_scope(child)
@@ -69,6 +67,22 @@ class SymbolCollector:
             node.ast,
             (
                 ast.Module,
+                ast.ClassDef,
+                ast.FunctionDef,
+                ast.AsyncFunctionDef,
+                ast.Lambda,
+                ast.ListComp,
+                ast.SetComp,
+                ast.DictComp,
+                ast.GeneratorExp,
+            ),
+        )
+
+    def _should_skip_children(self, node: ASTNode[Any]) -> bool:
+        """Check if a node's children should not be recursively visited."""
+        return isinstance(
+            node.ast,
+            (
                 ast.ClassDef,
                 ast.FunctionDef,
                 ast.AsyncFunctionDef,
@@ -105,14 +119,15 @@ class SymbolCollector:
             node: The ASTNode to visit.
             scope_node: The containing scope-defining node.
         """
-        if self._is_scope_defining(node):
-            return
-
         match node.ast:
             case ast.FunctionDef() | ast.AsyncFunctionDef():
                 self._collect_function(node, scope_node)
             case ast.ClassDef():
                 self._collect_class(node, scope_node)
+            case ast.Lambda() | ast.ListComp() | ast.SetComp() | ast.DictComp() | ast.GeneratorExp():
+                pass
+            case ast.Import() | ast.ImportFrom():
+                self._collect_import(node, scope_node)
             case ast.Assign() | ast.AugAssign() | ast.AnnAssign():
                 self._collect_assignment(node, scope_node)
             case ast.NamedExpr():
@@ -128,9 +143,10 @@ class SymbolCollector:
             case _:
                 pass
 
-        for child in node.children:
-            if not self._is_scope_defining(child):
-                self._visit_node(child, scope_node)
+        if not self._should_skip_children(node):
+            for child in node.children:
+                if not self._is_scope_defining(child):
+                    self._visit_node(child, scope_node)
 
     def _collect_function(
         self,
@@ -147,10 +163,10 @@ class SymbolCollector:
         func_def = node.ast
         self._define_symbol(func_def.name, func_def, scope_node, node)
 
-        # Function parameters go in the function's own scope
         if node in self._symbols_by_node or self._is_scope_defining(node):
             if node not in self._symbols_by_node:
                 self._symbols_by_node[node] = {}
+
             self._collect_parameters(func_def.args, node)
 
     def _collect_class(
@@ -166,6 +182,24 @@ class SymbolCollector:
             scope_node: The scope where the class is defined.
         """
         self._define_symbol(node.ast.name, node.ast, scope_node, node)
+
+    def _collect_import(
+        self,
+        node: ASTNode[Union[ast.Import, ast.ImportFrom]],
+        scope_node: ASTNode[Any],
+    ) -> None:
+        """
+        Collect imported names.
+
+        Args:
+            node: The import statement node.
+            scope_node: The scope where the import occurs.
+        """
+        import_stmt = node.ast
+        if isinstance(import_stmt, (ast.Import, ast.ImportFrom)):
+            for alias in import_stmt.names:
+                imported_name = alias.asname if alias.asname else alias.name
+                self._define_symbol(imported_name, import_stmt, scope_node, node)
 
     def _collect_assignment(
         self,
@@ -331,6 +365,8 @@ class SymbolCollector:
             case ast.Tuple() | ast.List():
                 for elt in target.elts:
                     self._collect_names_from_target(elt, def_node, scope_node, ast_node)
+            case ast.Starred():
+                self._collect_names_from_target(target.value, def_node, scope_node, ast_node)
             case _:
                 pass
 
@@ -394,7 +430,7 @@ class SymbolCollector:
             scope_node: The scope this symbol belongs to.
             ast_node: The ASTNode for calculating FQN prefix.
         """
-        fqn_prefix = ast_node.fqn
+        fqn_prefix = scope_node.fqn
         fqn = f"{fqn_prefix}.{name}" if fqn_prefix else name
 
         assert self._forest is not None, "Forest must be set before defining symbols"
